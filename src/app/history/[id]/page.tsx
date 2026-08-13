@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { AppNav } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
+import { WeightText } from "@/components/WeightText";
 import { createClient } from "@/lib/supabase/server";
-import { WEEK_LABELS } from "@/lib/program";
+import { formatHumanDate, WEEK_LABELS } from "@/lib/program";
 import type { WeekFocus } from "@/lib/types";
 
 type Props = {
@@ -38,6 +39,7 @@ export default async function SessionDetailPage({ params }: Props) {
     weight: number | null;
     reps: number | null;
     ai_suggested_weight: number | null;
+    notes: string | null;
     exercises: { name: string } | null;
   };
 
@@ -50,63 +52,65 @@ export default async function SessionDetailPage({ params }: Props) {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col">
-      <AppNav />
-      <main className="flex-1 space-y-4 px-4 pb-24 pt-5">
-        <Link
-          href="/history"
-          className="text-sm font-semibold text-[var(--muted)]"
-        >
-          ← History
-        </Link>
-        <header>
-          <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
-            {WEEK_LABELS[session.week_focus as WeekFocus]} · Day{" "}
-            {session.day_number}
-          </h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {session.performed_on}
-          </p>
-        </header>
+    <AppShell>
+      <Link
+        href="/history"
+        className="text-sm font-semibold text-[var(--muted)]"
+      >
+        ← History
+      </Link>
+      <header className="mt-3 mb-4">
+        <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
+          {WEEK_LABELS[session.week_focus as WeekFocus]} · Day{" "}
+          {session.day_number}
+        </h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          {formatHumanDate(session.performed_on)}
+        </p>
+      </header>
 
-        <div className="space-y-3">
-          {[...byExercise.entries()].map(([name, rows]) => (
-            <section
-              key={name}
-              className="rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-black/5"
-            >
-              <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[var(--ink)]">
-                {name}
-              </h2>
-              <ul className="mt-2 space-y-1">
-                {rows.map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex justify-between text-sm text-[var(--ink)]"
-                  >
-                    <span className="text-[var(--muted)]">
-                      Set {r.set_number}
-                    </span>
+      <div className="space-y-3">
+        {[...byExercise.entries()].map(([name, rows]) => (
+          <section
+            key={name}
+            className="rounded-2xl bg-[var(--card)] px-4 py-3 ring-1 ring-[var(--stroke)]"
+          >
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[var(--ink)]">
+              {name}
+            </h2>
+            <ul className="mt-2 space-y-1">
+              {rows.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex justify-between text-sm text-[var(--ink)]"
+                >
+                  <span className="text-[var(--muted)]">
+                    Set {r.set_number}
+                  </span>
                     <span className="tabular-nums font-semibold">
-                      {r.weight} lb × {r.reps}
+                      <WeightText lb={r.weight} /> × {r.reps}
                       {r.ai_suggested_weight != null && (
                         <span className="ml-2 font-normal text-[var(--muted)]">
-                          (AI {r.ai_suggested_weight})
+                          (AI <WeightText lb={r.ai_suggested_weight} />)
                         </span>
                       )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-          {byExercise.size === 0 && (
-            <p className="rounded-2xl bg-white/70 px-4 py-6 text-sm text-[var(--muted)] ring-1 ring-black/5">
-              No sets logged in this session.
-            </p>
-          )}
-        </div>
-      </main>
-    </div>
+                    {r.notes ? (
+                      <span className="ml-2 font-normal text-[var(--muted)]">
+                        · {r.notes}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        {byExercise.size === 0 && (
+          <p className="rounded-2xl bg-[var(--card)] px-4 py-6 text-sm text-[var(--muted)] ring-1 ring-[var(--stroke)]">
+            No sets logged in this session.
+          </p>
+        )}
+      </div>
+    </AppShell>
   );
 }

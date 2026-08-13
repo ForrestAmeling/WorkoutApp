@@ -24,6 +24,7 @@ export function StartWorkoutButton({
       const { error: clearError } = await supabase
         .from("routines")
         .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "")
         .neq("id", routineId);
       if (clearError) {
         setBusy(false);
@@ -59,7 +60,7 @@ export function StartWorkoutButton({
             ? "Log workout on Today"
             : "Set active & log on Today"}
       </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
     </div>
   );
 }

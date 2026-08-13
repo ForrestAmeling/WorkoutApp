@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import type { LibraryExercise } from "@/lib/types";
 
 export function ExercisePicker({
@@ -59,8 +60,8 @@ export function ExercisePicker({
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-      <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-[var(--surface)] shadow-xl">
-        <div className="flex items-center justify-between border-b border-black/5 px-4 py-3">
+      <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-[var(--surface)] shadow-[var(--shadow)] ring-1 ring-[var(--stroke)]">
+        <div className="flex items-center justify-between border-b border-[var(--stroke)] px-4 py-3">
           <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[var(--ink)]">
             Add exercise
           </h2>
@@ -73,18 +74,18 @@ export function ExercisePicker({
           </button>
         </div>
 
-        <div className="space-y-2 border-b border-black/5 px-4 py-3">
+        <div className="space-y-2 border-b border-[var(--stroke)] px-4 py-3">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search free-exercise-db…"
-            className="min-h-12 w-full rounded-xl bg-white px-3 text-base ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            className="min-h-12 w-full rounded-xl bg-[var(--input)] px-3 text-base ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
           />
           <div className="flex gap-2">
             <select
               value={muscle}
               onChange={(e) => setMuscle(e.target.value)}
-              className="min-h-11 flex-1 rounded-xl bg-white px-2 text-sm ring-1 ring-black/10"
+              className="min-h-11 flex-1 rounded-xl bg-[var(--input)] px-2 text-sm ring-1 ring-[var(--stroke)]"
             >
               <option value="">All muscles</option>
               {muscles.map((m) => (
@@ -96,7 +97,7 @@ export function ExercisePicker({
             <select
               value={equipment}
               onChange={(e) => setEquipment(e.target.value)}
-              className="min-h-11 flex-1 rounded-xl bg-white px-2 text-sm ring-1 ring-black/10"
+              className="min-h-11 flex-1 rounded-xl bg-[var(--input)] px-2 text-sm ring-1 ring-[var(--stroke)]"
             >
               <option value="">All equipment</option>
               {equipList.map((m) => (
@@ -113,15 +114,18 @@ export function ExercisePicker({
             <li className="px-2 py-4 text-sm text-[var(--muted)]">Searching…</li>
           )}
           {error && (
-            <li className="px-2 py-4 text-sm text-red-600">{error}</li>
+            <li className="px-2 py-4 text-sm text-[var(--danger)]">{error}</li>
           )}
           {!loading &&
             results.map((ex) => (
-              <li key={ex.id}>
+              <li
+                key={ex.id}
+                className="flex items-center gap-2 rounded-2xl bg-[var(--card)] px-3 py-2 ring-1 ring-[var(--stroke)]"
+              >
                 <button
                   type="button"
                   onClick={() => onPick(ex)}
-                  className="flex w-full items-center gap-3 rounded-2xl bg-white/90 px-3 py-2 text-left ring-1 ring-black/5 active:scale-[0.99]"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left active:scale-[0.99]"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -140,6 +144,11 @@ export function ExercisePicker({
                     </p>
                   </div>
                 </button>
+                <ExerciseHowToButton
+                  libraryId={ex.id}
+                  name={ex.name}
+                  exercise={ex}
+                />
               </li>
             ))}
         </ul>

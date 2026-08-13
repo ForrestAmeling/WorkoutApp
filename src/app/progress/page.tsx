@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/AppNav";
+import { AppShell } from "@/components/AppShell";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
-import { loadExerciseProgress } from "@/lib/progress";
+import {
+  loadExerciseProgress,
+  summarizeAiAccuracy,
+  type AiAccuracy,
+} from "@/lib/progress";
+import { shiftISODate, todayISO } from "@/lib/program";
 import { ensureUserRoutines, getActiveRoutine, listRoutines } from "@/lib/routines";
 import { createClient } from "@/lib/supabase/server";
 
@@ -37,25 +42,37 @@ export default async function ProgressPage({ searchParams }: Props) {
     routineId: scopeRoutineId,
   });
 
-  return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col">
-      <AppNav />
-      <main className="flex-1 space-y-4 px-4 pb-24 pt-5">
-        <header className="animate-rise">
-          <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
-            Progress
-          </h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Weight and reps over time for each lift
-          </p>
-        </header>
+  let aiQuery = supabase
+    .from("set_logs")
+    .select("weight, ai_suggested_weight, sessions!inner(user_id, routine_id)")
+    .eq("sessions.user_id", user.id)
+    .not("ai_suggested_weight", "is", null)
+    .limit(500);
+  if (scopeRoutineId) {
+    aiQuery = aiQuery.eq("sessions.routine_id", scopeRoutineId);
+  }
+  const { data: aiRows } = await aiQuery;
+  const aiAccuracy: AiAccuracy = summarizeAiAccuracy(aiRows ?? []);
+  const weekStart = shiftISODate(todayISO(), -6);
 
-        <ProgressDashboard
-          routines={routines}
-          selectedRoutineId={scopeRoutineId}
-          exercises={exercises}
-        />
-      </main>
-    </div>
+  return (
+    <AppShell>
+      <header className="mb-4 animate-rise">
+        <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
+          Progress
+        </h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Weight, volume, and stuck lifts
+        </p>
+      </header>
+
+      <ProgressDashboard
+        routines={routines}
+        selectedRoutineId={scopeRoutineId}
+        exercises={exercises}
+        aiAccuracy={aiAccuracy}
+        weekStart={weekStart}
+      />
+    </AppShell>
   );
 }

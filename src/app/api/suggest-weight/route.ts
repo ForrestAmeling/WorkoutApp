@@ -20,9 +20,15 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const exerciseId = body.exercise_id as string | undefined;
+  const libraryId = (body.library_id as string | null | undefined) || null;
   const weekFocus = body.week_focus as WeekFocus | undefined;
   const repLow = Number(body.rep_low);
   const repHigh = Number(body.rep_high);
+  const sessionSets = Array.isArray(body.session_sets)
+    ? (body.session_sets as HistorySet[]).filter(
+        (s) => s.weight != null && s.reps != null
+      )
+    : [];
 
   if (
     !exerciseId ||
@@ -36,11 +42,21 @@ export async function POST(request: Request) {
 
   const { data: exercise } = await supabase
     .from("exercises")
-    .select("name")
+    .select("name, library_id")
     .eq("id", exerciseId)
     .single();
 
-  // History for this exercise + same week focus only (via sessions join)
+  const lib = libraryId ?? exercise?.library_id ?? null;
+  let exerciseIds = [exerciseId];
+  if (lib) {
+    const { data: siblings } = await supabase
+      .from("exercises")
+      .select("id")
+      .eq("library_id", lib);
+    exerciseIds = (siblings ?? []).map((r) => r.id as string);
+    if (!exerciseIds.includes(exerciseId)) exerciseIds.push(exerciseId);
+  }
+
   const { data: rows } = await supabase
     .from("set_logs")
     .select(
@@ -55,7 +71,7 @@ export async function POST(request: Request) {
       )
     `
     )
-    .eq("exercise_id", exerciseId)
+    .in("exercise_id", exerciseIds)
     .eq("sessions.week_focus", weekFocus)
     .eq("sessions.user_id", user.id)
     .not("weight", "is", null)
@@ -63,19 +79,30 @@ export async function POST(request: Request) {
     .order("created_at", { ascending: false })
     .limit(12);
 
-  const history: HistorySet[] = (rows ?? [])
-    .filter((r) => r.weight != null && r.reps != null)
-    .slice(0, 6)
-    .map((r) => ({
-      weight: Number(r.weight),
-      reps: Number(r.reps),
-      set_number: r.set_number,
-    }));
+  const history: HistorySet[] = [
+    ...sessionSets
+      .slice()
+      .reverse()
+      .map((s) => ({
+        weight: Number(s.weight),
+        reps: Number(s.reps),
+        set_number: s.set_number,
+      })),
+    ...(rows ?? [])
+      .filter((r) => r.weight != null && r.reps != null)
+      .slice(0, 6)
+      .map((r) => ({
+        weight: Number(r.weight),
+        reps: Number(r.reps),
+        set_number: r.set_number,
+      })),
+  ].slice(0, 8);
 
   if (history.length === 0) {
     return NextResponse.json({
       suggested_weight: null,
-      rationale: "No history for this exercise and week focus yet — enter weight manually.",
+      rationale:
+        "No history for this exercise and week focus yet — enter weight manually.",
       source: "none",
     });
   }

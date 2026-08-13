@@ -1,3 +1,4 @@
+import { findBestLibraryMatch, scoreLibraryHit } from "./exercise-match";
 import type { LibraryExercise } from "./types";
 
 const EXERCISES_JSON_URL =
@@ -30,7 +31,9 @@ export function libraryImageUrl(path: string | undefined | null) {
 }
 
 function normalize(raw: RawExercise): LibraryExercise {
-  const images = raw.images ?? [];
+  const images = (raw.images ?? [])
+    .map((path) => libraryImageUrl(path))
+    .filter((url): url is string => Boolean(url));
   return {
     id: raw.id,
     name: raw.name,
@@ -43,7 +46,7 @@ function normalize(raw: RawExercise): LibraryExercise {
     instructions: raw.instructions ?? [],
     category: raw.category ?? null,
     images,
-    imageUrl: libraryImageUrl(images[0]),
+    imageUrl: images[0] ?? null,
   };
 }
 
@@ -75,39 +78,48 @@ export async function searchExerciseLibrary(opts: {
   const equipment = opts.equipment?.trim().toLowerCase() ?? "";
   const limit = Math.min(opts.limit ?? 40, 100);
 
-  return all
-    .filter((ex) => {
-      if (q && !ex.name.toLowerCase().includes(q) && !ex.id.toLowerCase().includes(q)) {
-        return false;
-      }
-      if (
-        muscle &&
-        !ex.primaryMuscles.some((m) => m.toLowerCase() === muscle) &&
-        !ex.secondaryMuscles.some((m) => m.toLowerCase() === muscle)
-      ) {
-        return false;
-      }
-      if (equipment && (ex.equipment ?? "").toLowerCase() !== equipment) {
-        return false;
-      }
-      return true;
-    })
-    .slice(0, limit);
+  const filtered = all.filter((ex) => {
+    if (
+      muscle &&
+      !ex.primaryMuscles.some((m) => m.toLowerCase() === muscle) &&
+      !ex.secondaryMuscles.some((m) => m.toLowerCase() === muscle)
+    ) {
+      return false;
+    }
+    if (equipment && (ex.equipment ?? "").toLowerCase() !== equipment) {
+      return false;
+    }
+    return true;
+  });
+
+  if (!q) return filtered.slice(0, limit);
+
+  return filtered
+    .map((ex) => ({ ex, score: scoreLibraryHit(q, ex) }))
+    .filter((row) => row.score >= 55)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((row) => row.ex);
 }
 
 export async function findLibraryByName(
   name: string
 ): Promise<LibraryExercise | null> {
   const all = await loadExerciseLibrary();
-  const needle = name.trim().toLowerCase();
-  const exact = all.find((e) => e.name.toLowerCase() === needle);
-  if (exact) return exact;
-  const partial = all.find(
-    (e) =>
-      e.name.toLowerCase().includes(needle) ||
-      needle.includes(e.name.toLowerCase())
-  );
-  return partial ?? null;
+  return findBestLibraryMatch(all, name);
+}
+
+export async function getLibraryExercise(opts: {
+  id?: string | null;
+  name?: string | null;
+}): Promise<LibraryExercise | null> {
+  const all = await loadExerciseLibrary();
+  if (opts.id) {
+    const byId = all.find((e) => e.id === opts.id);
+    if (byId) return byId;
+  }
+  if (opts.name) return findBestLibraryMatch(all, opts.name);
+  return null;
 }
 
 export function uniqueMuscles(list: LibraryExercise[]) {

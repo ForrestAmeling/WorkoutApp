@@ -8,6 +8,7 @@ import {
   type PeriodizationMode,
 } from "@/lib/periodization";
 import type { LibraryExercise, RoutineDayInput } from "@/lib/types";
+import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
 
 type Mode = "choose" | "manual" | "ai" | "review";
@@ -33,7 +34,7 @@ function PeriodizationPicker({
             className={`flex min-h-12 w-full flex-col items-start rounded-xl px-3 py-2 text-left ${
               value === opt.mode
                 ? "bg-[var(--accent)] text-[var(--accent-ink)]"
-                : "bg-white/80 text-[var(--ink)] ring-1 ring-black/5"
+                : "bg-[var(--card)] text-[var(--ink)] ring-1 ring-[var(--stroke)]"
             }`}
           >
             <span className="text-sm font-bold">{opt.label}</span>
@@ -192,7 +193,7 @@ export function NewRoutineForm() {
                 className={`min-h-12 flex-1 rounded-xl text-base font-bold ${
                   daysPerWeek === n
                     ? "bg-[var(--accent)] text-[var(--accent-ink)]"
-                    : "bg-white/80 text-[var(--muted)] ring-1 ring-black/5"
+                    : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
                 }`}
               >
                 {n}
@@ -209,7 +210,7 @@ export function NewRoutineForm() {
         <button
           type="button"
           onClick={initManual}
-          className="min-h-14 w-full rounded-xl bg-[var(--ink)] text-base font-bold text-white"
+          className="min-h-14 w-full rounded-xl bg-[var(--solid)] text-base font-bold text-[var(--on-solid)]"
         >
           Build myself
         </button>
@@ -248,8 +249,8 @@ export function NewRoutineForm() {
                 onClick={() => setMinutesPerSession(m)}
                 className={`min-h-11 flex-1 rounded-xl text-sm font-bold ${
                   minutesPerSession === m
-                    ? "bg-[var(--ink)] text-white"
-                    : "bg-white/80 text-[var(--muted)] ring-1 ring-black/5"
+                    ? "bg-[var(--solid)] text-[var(--on-solid)]"
+                    : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
                 }`}
               >
                 {m}
@@ -262,9 +263,9 @@ export function NewRoutineForm() {
           onChange={(e) => setPrompt(e.target.value)}
           rows={5}
           placeholder="e.g. Hit the whole body over the week, dumbbells + cables, strength focus…"
-          className="w-full rounded-xl bg-white px-3 py-3 text-base ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          className="w-full rounded-xl bg-[var(--input)] px-3 py-3 text-base ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
         <button
           type="button"
           disabled={busy}
@@ -294,7 +295,7 @@ export function NewRoutineForm() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Summer PPL"
-          className="min-h-12 w-full rounded-xl bg-white px-3 text-base font-semibold ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          className="min-h-12 w-full rounded-xl bg-[var(--input)] px-3 text-base font-semibold ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
         />
       </div>
 
@@ -312,7 +313,7 @@ export function NewRoutineForm() {
             className={`min-h-11 rounded-xl px-3 text-sm font-bold ${
               i === activeDay
                 ? "bg-[var(--accent)] text-[var(--accent-ink)]"
-                : "bg-white/80 text-[var(--muted)] ring-1 ring-black/5"
+                : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
             }`}
           >
             {d.name}
@@ -321,7 +322,7 @@ export function NewRoutineForm() {
       </div>
 
       {days[activeDay] && (
-        <section className="space-y-3 rounded-2xl bg-white/80 p-4 ring-1 ring-black/5">
+        <section className="space-y-3 rounded-2xl bg-[var(--card)] p-4 ring-1 ring-[var(--stroke)]">
           <input
             value={days[activeDay].name}
             onChange={(e) => {
@@ -332,7 +333,7 @@ export function NewRoutineForm() {
                 )
               );
             }}
-            className="min-h-11 w-full rounded-xl bg-[var(--canvas)] px-3 font-[family-name:var(--font-display)] text-xl font-bold ring-1 ring-black/5"
+            className="min-h-11 w-full rounded-xl bg-[var(--canvas)] px-3 font-[family-name:var(--font-display)] text-xl font-bold ring-1 ring-[var(--stroke)]"
           />
           <ul className="space-y-2">
             {days[activeDay].exercises.map((ex, idx) => (
@@ -352,6 +353,10 @@ export function NewRoutineForm() {
                     {ex.target_sets}×{ex.rep_low}–{ex.rep_high}
                     {periodizationMode === "full" ? " (middle shown)" : ""}
                   </p>
+                  <ExerciseHowToButton
+                    libraryId={ex.library_id}
+                    name={ex.name}
+                  />
                 </div>
                 <button
                   type="button"
@@ -367,7 +372,7 @@ export function NewRoutineForm() {
                       )
                     )
                   }
-                  className="text-sm font-semibold text-red-700"
+                  className="text-sm font-semibold text-[var(--danger)]"
                 >
                   Remove
                 </button>
@@ -384,13 +389,13 @@ export function NewRoutineForm() {
         </section>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 
       <button
         type="button"
         disabled={busy}
         onClick={() => void save(mode === "review" ? "ai" : "manual")}
-        className="min-h-14 w-full rounded-xl bg-[var(--ink)] text-base font-bold text-white disabled:opacity-60"
+        className="min-h-14 w-full rounded-xl bg-[var(--solid)] text-base font-bold text-[var(--on-solid)] disabled:opacity-60"
       >
         {busy ? "Saving…" : "Save & activate routine"}
       </button>

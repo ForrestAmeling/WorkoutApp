@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    useOffline: true,
+  },
   images: {
     remotePatterns: [
       {
@@ -9,6 +12,19 @@ const nextConfig: NextConfig = {
         pathname: "/yuhonas/free-exercise-db/**",
       },
     ],
+  },
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
+    ];
   },
 };
 

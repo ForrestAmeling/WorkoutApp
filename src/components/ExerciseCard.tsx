@@ -3,6 +3,20 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTarget } from "@/lib/program";
+import {
+  enqueueSet,
+  isNetworkError,
+  queuedToSetLog,
+} from "@/lib/offline-queue";
+import { useSettings } from "@/components/SettingsProvider";
+import {
+  displayToLb,
+  formatWeight,
+  lbToDisplay,
+  unitLabel,
+  weightStep,
+} from "@/lib/units";
+import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import type { ExerciseWithTarget, SetLog, WeekFocus } from "@/lib/types";
 
 export function ExerciseCard({
@@ -12,7 +26,11 @@ export function ExerciseCard({
   dayNumber,
   routineId,
   cycleId,
-  defaultOpen = false,
+  performedOn,
+  open,
+  onOpenChange,
+  onSetsChange,
+  onLogged,
 }: {
   exercise: ExerciseWithTarget;
   sessionId: string | null;
@@ -20,22 +38,34 @@ export function ExerciseCard({
   dayNumber: number;
   routineId: string;
   cycleId: string | null;
-  defaultOpen?: boolean;
+  performedOn: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSetsChange: (exerciseId: string, sets: SetLog[]) => void;
+  onLogged: () => void;
 }) {
+  const { settings } = useSettings();
+  const unit = settings.unit;
   const [sets, setSets] = useState<SetLog[]>(exercise.sets);
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId);
-  const initiallyDone = exercise.sets.length >= exercise.target.target_sets;
-  const [open, setOpen] = useState(defaultOpen && !initiallyDone);
   const [weight, setWeight] = useState<number | "">("");
   const [reps, setReps] = useState<number | "">("");
+  const [notes, setNotes] = useState("");
+  const [showNotes, setShowNotes] = useState(false);
   const [aiSuggested, setAiSuggested] = useState<number | null>(null);
   const [rationale, setRationale] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editWeight, setEditWeight] = useState<number | "">("");
+  const [editReps, setEditReps] = useState<number | "">("");
+  const [editNotes, setEditNotes] = useState("");
+  const [loggingExtra, setLoggingExtra] = useState(false);
 
+  const targetDone = sets.length >= exercise.target.target_sets;
+  const showLogForm = open && (!targetDone || loggingExtra);
   const nextSet = sets.length + 1;
-  const done = sets.length >= exercise.target.target_sets;
   const targetLabel = formatTarget(
     exercise.target.target_sets,
     exercise.target.rep_low,
@@ -43,10 +73,23 @@ export function ExerciseCard({
   );
 
   useEffect(() => {
+    setSets(exercise.sets);
+  }, [exercise.sets]);
+
+  useEffect(() => {
+    setSessionId(initialSessionId);
+  }, [initialSessionId]);
+
+  useEffect(() => {
     if (!open || weight !== "" || sets.length > 0) return;
     void fetchSuggestion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  function commitSets(next: SetLog[]) {
+    setSets(next);
+    onSetsChange(exercise.id, next);
+  }
 
   async function fetchSuggestion() {
     setSuggesting(true);
@@ -57,15 +100,22 @@ export function ExerciseCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exercise_id: exercise.id,
+          library_id: exercise.library_id,
           week_focus: weekFocus,
           rep_low: exercise.target.rep_low,
           rep_high: exercise.target.rep_high,
+          session_sets: sets.map((s) => ({
+            weight: s.weight,
+            reps: s.reps,
+            set_number: s.set_number,
+          })),
         }),
       });
       const data = await res.json();
       if (data.suggested_weight != null) {
-        setWeight(Number(data.suggested_weight));
-        setAiSuggested(Number(data.suggested_weight));
+        const lb = Number(data.suggested_weight);
+        setWeight(lbToDisplay(lb, unit));
+        setAiSuggested(lb);
         setRationale(data.rationale ?? null);
       } else {
         setAiSuggested(null);
@@ -79,14 +129,13 @@ export function ExerciseCard({
   }
 
   async function resolveSessionId(supabase: ReturnType<typeof createClient>) {
-    if (sessionId) return sessionId;
+    if (sessionId && sessionId !== "pending") return sessionId;
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) throw new Error("Not signed in");
 
-    const performedOn = new Date().toISOString().slice(0, 10);
     const { data: existing } = await supabase
       .from("sessions")
       .select("id")
@@ -115,7 +164,22 @@ export function ExerciseCard({
       .select("id")
       .single();
 
-    if (createError) throw createError;
+    if (createError) {
+      const { data: raced } = await supabase
+        .from("sessions")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("routine_id", routineId)
+        .eq("performed_on", performedOn)
+        .eq("week_focus", weekFocus)
+        .eq("day_number", dayNumber)
+        .maybeSingle();
+      if (raced?.id) {
+        setSessionId(raced.id);
+        return raced.id as string;
+      }
+      throw createError;
+    }
     setSessionId(created.id);
     return created.id as string;
   }
@@ -128,34 +192,125 @@ export function ExerciseCard({
     setBusy(true);
     setError(null);
     const supabase = createClient();
+    const lb = displayToLb(Number(weight), unit);
+    const payload = {
+      exercise_id: exercise.id,
+      set_number: nextSet,
+      weight: lb,
+      reps: Number(reps),
+      ai_suggested_weight: aiSuggested,
+      notes: notes.trim() || null,
+    };
+
     try {
       const activeSessionId = await resolveSessionId(supabase);
       const { data, error: insertError } = await supabase
         .from("set_logs")
         .insert({
           session_id: activeSessionId,
-          exercise_id: exercise.id,
-          set_number: nextSet,
-          weight: Number(weight),
-          reps: Number(reps),
-          ai_suggested_weight: aiSuggested,
+          ...payload,
         })
         .select("*")
         .single();
 
-      if (insertError) {
-        setError(insertError.message);
-        return;
-      }
-      setSets((prev) => [...prev, data as SetLog]);
-      setReps("");
-      setAiSuggested(null);
-      setRationale(null);
+      if (insertError) throw insertError;
+      commitSets([...sets, data as SetLog]);
+      afterSave();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save set");
+      if (isNetworkError(e)) {
+        const queued = enqueueSet({
+          session: {
+            routineId,
+            weekFocus,
+            dayNumber,
+            cycleId,
+            performedOn,
+          },
+          log: payload,
+        });
+        commitSets([...sets, queuedToSetLog(queued, exercise.id)]);
+        afterSave();
+        setError("Saved on this phone — will sync when you are online.");
+      } else {
+        setError(e instanceof Error ? e.message : "Could not save set");
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  function afterSave() {
+    setReps("");
+    setNotes("");
+    setShowNotes(false);
+    setAiSuggested(null);
+    setRationale(null);
+    setLoggingExtra(false);
+    onLogged();
+  }
+
+  async function saveEdit(set: SetLog) {
+    if (editWeight === "" || editReps === "") {
+      setError("Enter weight and reps");
+      return;
+    }
+    if (set.id.startsWith("local-")) {
+      setError("Wait until this set syncs to edit it.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const supabase = createClient();
+    const lb = displayToLb(Number(editWeight), unit);
+    const { data, error: updateError } = await supabase
+      .from("set_logs")
+      .update({
+        weight: lb,
+        reps: Number(editReps),
+        notes: editNotes.trim() || null,
+      })
+      .eq("id", set.id)
+      .select("*")
+      .single();
+    setBusy(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    commitSets(sets.map((s) => (s.id === set.id ? (data as SetLog) : s)));
+    setEditingId(null);
+  }
+
+  async function deleteSet(set: SetLog) {
+    if (!confirm("Delete this set?")) return;
+    if (set.id.startsWith("local-")) {
+      setError("Wait until this set syncs to delete it.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const supabase = createClient();
+    const { error: delError } = await supabase
+      .from("set_logs")
+      .delete()
+      .eq("id", set.id);
+    setBusy(false);
+    if (delError) {
+      setError(delError.message);
+      return;
+    }
+    const remaining = sets
+      .filter((s) => s.id !== set.id)
+      .map((s, i) => ({ ...s, set_number: i + 1 }));
+    for (const s of remaining) {
+      if (s.id.startsWith("local-")) continue;
+      await supabase
+        .from("set_logs")
+        .update({ set_number: s.set_number })
+        .eq("id", s.id);
+    }
+    commitSets(remaining);
+    setEditingId(null);
   }
 
   function bumpWeight(delta: number) {
@@ -172,14 +327,22 @@ export function ExerciseCard({
     });
   }
 
+  function startEdit(s: SetLog) {
+    setEditingId(s.id);
+    setEditWeight(s.weight == null ? "" : lbToDisplay(Number(s.weight), unit));
+    setEditReps(s.reps ?? "");
+    setEditNotes(s.notes ?? "");
+    onOpenChange(true);
+  }
+
   return (
-    <section className="overflow-hidden rounded-2xl bg-white/80 ring-1 ring-black/5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 px-4 py-4 text-left"
-      >
-        <div className="flex min-w-0 flex-1 items-start gap-3">
+    <section className="overflow-hidden rounded-2xl bg-[var(--card)] ring-1 ring-[var(--stroke)]">
+      <div className="flex items-start justify-between gap-3 px-4 py-4">
+        <button
+          type="button"
+          onClick={() => onOpenChange(!open)}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={exercise.image_url ?? "/icon-192.png"}
@@ -193,68 +356,165 @@ export function ExerciseCard({
             <p className="mt-1 text-sm text-[var(--muted)]">
               {targetLabel}
               {exercise.muscle_group ? ` · ${exercise.muscle_group}` : ""}
-              {!open && !done ? " · Tap to log" : ""}
+              {!open && !targetDone ? " · Tap to log" : ""}
             </p>
           </div>
+        </button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+              targetDone
+                ? "bg-[var(--ok-bg)] text-[var(--ok-fg)]"
+                : "bg-[var(--chip)] text-[var(--chip-ink)]"
+            }`}
+          >
+            {sets.length}/{exercise.target.target_sets}
+          </span>
+          <ExerciseHowToButton
+            libraryId={exercise.library_id}
+            name={exercise.name}
+          />
         </div>
-        <span
-          className={`mt-1 rounded-full px-2.5 py-1 text-xs font-bold ${
-            done
-              ? "bg-emerald-100 text-emerald-800"
-              : "bg-[var(--accent-soft)] text-[var(--accent-ink)]"
-          }`}
-        >
-          {sets.length}/{exercise.target.target_sets}
-        </span>
-      </button>
+      </div>
 
       {sets.length > 0 && (
-        <ul className="space-y-1 border-t border-black/5 px-4 py-3">
+        <ul className="space-y-1 border-t border-[var(--stroke)] px-4 py-3">
           {sets.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center justify-between text-sm text-[var(--ink)]"
-            >
-              <span className="text-[var(--muted)]">Set {s.set_number}</span>
-              <span className="font-semibold tabular-nums">
-                {s.weight} lb × {s.reps}
-              </span>
+            <li key={s.id} className="text-sm text-[var(--ink)]">
+              {editingId === s.id ? (
+                <div className="space-y-2 rounded-xl bg-[var(--canvas)]/70 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                    Edit set {s.set_number}
+                    {s.id.startsWith("local-") ? " · pending sync" : ""}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs text-[var(--muted)]">
+                      {unitLabel(unit)}
+                      <input
+                        inputMode="decimal"
+                        value={editWeight}
+                        onChange={(e) =>
+                          setEditWeight(
+                            e.target.value === "" ? "" : Number(e.target.value)
+                          )
+                        }
+                        className="mt-1 min-h-11 w-full rounded-lg bg-[var(--input)] px-2 text-base font-bold ring-1 ring-[var(--stroke)]"
+                      />
+                    </label>
+                    <label className="text-xs text-[var(--muted)]">
+                      Reps
+                      <input
+                        inputMode="numeric"
+                        value={editReps}
+                        onChange={(e) =>
+                          setEditReps(
+                            e.target.value === "" ? "" : Number(e.target.value)
+                          )
+                        }
+                        className="mt-1 min-h-11 w-full rounded-lg bg-[var(--input)] px-2 text-base font-bold ring-1 ring-[var(--stroke)]"
+                      />
+                    </label>
+                  </div>
+                  <input
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Notes"
+                    className="min-h-11 w-full rounded-lg bg-[var(--input)] px-3 text-sm ring-1 ring-[var(--stroke)]"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void saveEdit(s)}
+                      className="min-h-11 flex-1 rounded-lg bg-[var(--accent)] text-sm font-bold text-[var(--accent-ink)]"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="min-h-11 rounded-lg px-3 text-sm font-semibold text-[var(--muted)]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void deleteSet(s)}
+                      className="min-h-11 rounded-lg px-3 text-sm font-semibold text-[var(--danger)]"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startEdit(s)}
+                  className="flex w-full items-center justify-between py-1 text-left"
+                >
+                  <span className="text-[var(--muted)]">
+                    Set {s.set_number}
+                    {s.id.startsWith("local-") ? " · queued" : ""}
+                  </span>
+                  <span className="font-semibold tabular-nums">
+                    {formatWeight(s.weight, unit)} × {s.reps}
+                    {s.notes ? (
+                      <span className="ml-2 font-normal text-[var(--muted)]">
+                        · {s.notes}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      {open && !done && (
-        <div className="space-y-3 border-t border-black/5 bg-[var(--canvas)]/60 px-4 py-4">
+      {open && targetDone && !loggingExtra && (
+        <div className="border-t border-[var(--stroke)] px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setLoggingExtra(true)}
+            className="w-full text-sm font-semibold text-[var(--accent-text)]"
+          >
+            + Extra set
+          </button>
+        </div>
+      )}
+
+      {showLogForm && (
+        <div className="space-y-3 border-t border-[var(--stroke)] bg-[var(--canvas)]/60 px-4 py-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-[var(--ink)]">
-              Log set {nextSet}
+              {targetDone ? `Extra set ${nextSet}` : `Log set ${nextSet}`}
             </p>
             <button
               type="button"
               onClick={() => void fetchSuggestion()}
               disabled={suggesting}
-              className="text-sm font-semibold text-[var(--accent-ink)] underline-offset-2 hover:underline disabled:opacity-50"
+              className="text-sm font-semibold text-[var(--accent-text)] underline-offset-2 hover:underline disabled:opacity-50"
             >
               {suggesting ? "Suggesting…" : "Suggest weight"}
             </button>
           </div>
 
           {rationale && (
-            <p className="rounded-xl bg-white/80 px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
+            <p className="rounded-xl bg-[var(--card)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
               {rationale}
             </p>
           )}
 
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-              Weight (lb)
+              Weight ({unitLabel(unit)})
             </label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => bumpWeight(-2.5)}
-                className="min-h-14 min-w-14 rounded-xl bg-white text-2xl font-bold text-[var(--ink)] ring-1 ring-black/10 active:scale-95"
+                onClick={() => bumpWeight(-weightStep(unit))}
+                className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
               >
                 −
               </button>
@@ -264,12 +524,12 @@ export function ExerciseCard({
                 onChange={(e) =>
                   setWeight(e.target.value === "" ? "" : Number(e.target.value))
                 }
-                className="min-h-14 w-full rounded-xl bg-white text-center text-2xl font-bold tabular-nums text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                className="min-h-14 w-full rounded-xl bg-[var(--input)] text-center text-2xl font-bold tabular-nums text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
               <button
                 type="button"
-                onClick={() => bumpWeight(2.5)}
-                className="min-h-14 min-w-14 rounded-xl bg-white text-2xl font-bold text-[var(--ink)] ring-1 ring-black/10 active:scale-95"
+                onClick={() => bumpWeight(weightStep(unit))}
+                className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
               >
                 +
               </button>
@@ -284,7 +544,7 @@ export function ExerciseCard({
               <button
                 type="button"
                 onClick={() => bumpReps(-1)}
-                className="min-h-14 min-w-14 rounded-xl bg-white text-2xl font-bold text-[var(--ink)] ring-1 ring-black/10 active:scale-95"
+                className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
               >
                 −
               </button>
@@ -294,25 +554,42 @@ export function ExerciseCard({
                 onChange={(e) =>
                   setReps(e.target.value === "" ? "" : Number(e.target.value))
                 }
-                className="min-h-14 w-full rounded-xl bg-white text-center text-2xl font-bold tabular-nums text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                className="min-h-14 w-full rounded-xl bg-[var(--input)] text-center text-2xl font-bold tabular-nums text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
               <button
                 type="button"
                 onClick={() => bumpReps(1)}
-                className="min-h-14 min-w-14 rounded-xl bg-white text-2xl font-bold text-[var(--ink)] ring-1 ring-black/10 active:scale-95"
+                className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
               >
                 +
               </button>
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {showNotes ? (
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes for this set"
+              className="min-h-12 w-full rounded-xl bg-[var(--input)] px-3 text-sm ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowNotes(true)}
+              className="text-sm font-semibold text-[var(--muted)]"
+            >
+              + Add note
+            </button>
+          )}
+
+          {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 
           <button
             type="button"
             onClick={() => void logSet()}
             disabled={busy}
-            className="min-h-14 w-full rounded-xl bg-[var(--accent)] text-base font-bold text-[var(--accent-ink)] shadow-sm transition active:scale-[0.99] disabled:opacity-60"
+            className="min-h-14 w-full rounded-xl bg-[var(--accent)] text-base font-bold text-[var(--accent-ink)] transition active:scale-[0.99] disabled:opacity-60"
           >
             {busy ? "Saving…" : `Save set ${nextSet}`}
           </button>

@@ -244,3 +244,70 @@ export function filterPointsByFocus(
   if (focus === "all") return points;
   return points.filter((p) => p.weekFocus === focus);
 }
+
+/** True when the last N sessions share the same top weight. */
+export function isStuckLift(
+  points: SessionProgressPoint[],
+  sessions = 4
+): boolean {
+  if (points.length < sessions) return false;
+  const last = points.slice(-sessions);
+  const weight = last[0].maxWeight;
+  return last.every((p) => p.maxWeight === weight);
+}
+
+export type MuscleVolume = {
+  muscle: string;
+  volume: number;
+  sets: number;
+};
+
+export function weeklyMuscleVolume(
+  exercises: ExerciseProgress[],
+  sinceISO: string
+): MuscleVolume[] {
+  const byMuscle = new Map<string, { volume: number; sets: number }>();
+  for (const ex of exercises) {
+    const muscle = (ex.muscleGroup ?? "other").trim() || "other";
+    for (const p of ex.points) {
+      if (p.date < sinceISO) continue;
+      const cur = byMuscle.get(muscle) ?? { volume: 0, sets: 0 };
+      cur.volume += p.volume;
+      cur.sets += p.sets;
+      byMuscle.set(muscle, cur);
+    }
+  }
+  return [...byMuscle.entries()]
+    .map(([muscle, v]) => ({
+      muscle,
+      volume: round1(v.volume),
+      sets: v.sets,
+    }))
+    .sort((a, b) => b.volume - a.volume);
+}
+
+export type AiAccuracy = {
+  compared: number;
+  matched: number;
+  avgAbsDelta: number | null;
+};
+
+export function summarizeAiAccuracy(
+  rows: { weight: number | null; ai_suggested_weight: number | null }[]
+): AiAccuracy {
+  let compared = 0;
+  let matched = 0;
+  let abs = 0;
+  for (const r of rows) {
+    if (r.weight == null || r.ai_suggested_weight == null) continue;
+    compared += 1;
+    const delta = Math.abs(Number(r.weight) - Number(r.ai_suggested_weight));
+    abs += delta;
+    if (delta < 0.01) matched += 1;
+  }
+  return {
+    compared,
+    matched,
+    avgAbsDelta: compared ? round1(abs / compared) : null,
+  };
+}

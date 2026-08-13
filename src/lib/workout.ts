@@ -26,8 +26,10 @@ export function routineMode(routine: Routine): PeriodizationMode {
 
 export async function ensureCycle(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  opts?: { startNext?: boolean; startedOn?: string }
 ): Promise<Cycle> {
+  const startedOn = opts?.startedOn ?? todayISO();
   const { data: existing } = await supabase
     .from("cycles")
     .select("*")
@@ -36,11 +38,26 @@ export async function ensureCycle(
     .limit(1)
     .maybeSingle();
 
-  if (existing) return existing as Cycle;
+  if (existing && !opts?.startNext) return existing as Cycle;
+
+  if (existing && opts?.startNext) {
+    if (existing.started_on >= startedOn) return existing as Cycle;
+    const { data, error } = await supabase
+      .from("cycles")
+      .insert({
+        user_id: userId,
+        cycle_number: existing.cycle_number + 1,
+        started_on: startedOn,
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as Cycle;
+  }
 
   const { data, error } = await supabase
     .from("cycles")
-    .insert({ user_id: userId, cycle_number: 1, started_on: todayISO() })
+    .insert({ user_id: userId, cycle_number: 1, started_on: startedOn })
     .select("*")
     .single();
 
@@ -53,7 +70,11 @@ export async function resolveDefaultDay(
   userId: string,
   routine: Routine,
   maxDay: number
-): Promise<{ weekFocus: WeekFocus; dayNumber: number }> {
+): Promise<{
+  weekFocus: WeekFocus;
+  dayNumber: number;
+  wrappedCycle: boolean;
+}> {
   // Only advance from sessions that actually have logged sets
   const { data: last } = await supabase
     .from("sessions")
@@ -71,20 +92,32 @@ export async function resolveDefaultDay(
     return {
       weekFocus: defaultWeekFocus(mode),
       dayNumber: 1,
+      wrappedCycle: false,
     };
   }
 
   if (!showsWeekPicker(mode)) {
     const nextDay =
       last.day_number >= maxDay ? 1 : last.day_number + 1;
-    return { weekFocus: defaultWeekFocus(mode), dayNumber: nextDay };
+    return {
+      weekFocus: defaultWeekFocus(mode),
+      dayNumber: nextDay,
+      wrappedCycle: last.day_number >= maxDay,
+    };
   }
 
-  return nextPosition(
+  const next = nextPosition(
     last.week_focus as WeekFocus,
     Math.min(last.day_number, maxDay),
     maxDay
   );
+  const wrappedCycle =
+    last.week_focus === "heavy" &&
+    last.day_number >= maxDay &&
+    next.weekFocus === "light" &&
+    next.dayNumber === 1;
+
+  return { ...next, wrappedCycle };
 }
 
 /** Find today's session if it already exists — does not create. */
@@ -93,9 +126,9 @@ export async function findSession(
   userId: string,
   routineId: string,
   weekFocus: WeekFocus,
-  dayNumber: number
+  dayNumber: number,
+  performedOn = todayISO()
 ): Promise<Session | null> {
-  const performedOn = todayISO();
   const { data, error } = await supabase
     .from("sessions")
     .select("*")
@@ -116,14 +149,16 @@ export async function ensureSession(
   routine: Routine,
   cycle: Cycle | null,
   weekFocus: WeekFocus,
-  dayNumber: number
+  dayNumber: number,
+  performedOn = todayISO()
 ): Promise<Session> {
   const existing = await findSession(
     supabase,
     userId,
     routine.id,
     weekFocus,
-    dayNumber
+    dayNumber,
+    performedOn
   );
   if (existing) return existing;
 
@@ -135,12 +170,24 @@ export async function ensureSession(
       routine_id: routine.id,
       week_focus: weekFocus,
       day_number: dayNumber,
-      performed_on: todayISO(),
+      performed_on: performedOn,
     })
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // Unique constraint race: another card created the session first.
+    const raced = await findSession(
+      supabase,
+      userId,
+      routine.id,
+      weekFocus,
+      dayNumber,
+      performedOn
+    );
+    if (raced) return raced;
+    throw error;
+  }
   return data as Session;
 }
 

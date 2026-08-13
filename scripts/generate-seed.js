@@ -124,17 +124,21 @@ for (const line of csv) {
 }
 
 const sql = [
-  "-- Seed exercises and targets from Workout_Tracker.csv",
-  "truncate table set_logs, sessions, cycles, exercise_targets, exercises cascade;",
+  "-- Refresh template program only. Does not touch user sessions or set logs.",
+  "delete from exercise_targets",
+  "where exercise_id in (",
+  "  select id from exercises where is_template = true or routine_id is null",
+  ");",
+  "delete from exercises where is_template = true or routine_id is null;",
 ];
 
 for (const [key, e] of exercises) {
   const id = uuidFrom("ex:" + key);
   const name = e.name.replace(/'/g, "''");
   sql.push(
-    `insert into exercises (id, name, muscle_group, day_number, is_accessory, sort_order) values ('${id}', '${name}', ${
+    `insert into exercises (id, name, muscle_group, day_number, is_accessory, sort_order, is_template) values ('${id}', '${name}', ${
       e.muscle ? `'${e.muscle}'` : "null"
-    }, ${e.day}, ${e.acc}, ${e.sort});`
+    }, ${e.day}, ${e.acc}, ${e.sort}, true);`
   );
 }
 

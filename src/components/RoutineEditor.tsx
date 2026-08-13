@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
 import {
   defaultTargetsForFocus,
@@ -219,6 +220,37 @@ export function RoutineEditor({
     router.refresh();
   }
 
+  async function moveExercise(exerciseId: string, dir: -1 | 1) {
+    if (!activeDay) return;
+    const list = [...activeDay.exercises];
+    const idx = list.findIndex((e) => e.id === exerciseId);
+    const next = idx + dir;
+    if (idx < 0 || next < 0 || next >= list.length) return;
+    const a = list[idx];
+    const b = list[next];
+    list[idx] = b;
+    list[next] = a;
+    const supabase = createClient();
+    await supabase
+      .from("exercises")
+      .update({ sort_order: next + 1 })
+      .eq("id", a.id);
+    await supabase
+      .from("exercises")
+      .update({ sort_order: idx + 1 })
+      .eq("id", b.id);
+    setDays((prev) =>
+      prev.map((d) =>
+        d.id === activeDay.id
+          ? {
+              ...d,
+              exercises: list.map((e, i) => ({ ...e, sort_order: i + 1 })),
+            }
+          : d
+      )
+    );
+  }
+
   async function updateTarget(
     exerciseId: string,
     weekFocus: WeekFocus,
@@ -270,13 +302,13 @@ export function RoutineEditor({
           <input
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
-            className="min-h-12 flex-1 rounded-xl bg-white px-3 text-base font-semibold ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            className="min-h-12 flex-1 rounded-xl bg-[var(--input)] px-3 text-base font-semibold ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
           />
           <button
             type="button"
             disabled={busy}
             onClick={() => void saveName()}
-            className="min-h-12 rounded-xl bg-[var(--ink)] px-4 text-sm font-bold text-white"
+            className="min-h-12 rounded-xl bg-[var(--solid)] px-4 text-sm font-bold text-[var(--on-solid)]"
           >
             Save
           </button>
@@ -288,7 +320,7 @@ export function RoutineEditor({
         </p>
       </div>
 
-      <section className="space-y-3 rounded-2xl bg-white/80 p-4 ring-1 ring-black/5">
+      <section className="space-y-3 rounded-2xl bg-[var(--card)] p-4 ring-1 ring-[var(--stroke)]">
         <h2 className="font-[family-name:var(--font-display)] text-xl font-bold text-[var(--ink)]">
           Edit with AI
         </h2>
@@ -303,7 +335,7 @@ export function RoutineEditor({
           onChange={(e) => setAiPrompt(e.target.value)}
           rows={3}
           placeholder="e.g. Make Day 2 more pull-focused and drop to 3 exercises…"
-          className="w-full rounded-xl bg-[var(--canvas)] px-3 py-3 text-base ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          className="w-full rounded-xl bg-[var(--canvas)] px-3 py-3 text-base ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
         />
         <button
           type="button"
@@ -351,7 +383,7 @@ export function RoutineEditor({
             className={`min-h-11 rounded-xl px-3 text-sm font-bold ${
               d.id === activeDay?.id
                 ? "bg-[var(--accent)] text-[var(--accent-ink)]"
-                : "bg-white/80 text-[var(--muted)] ring-1 ring-black/5"
+                : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
             }`}
           >
             {d.name}
@@ -361,14 +393,14 @@ export function RoutineEditor({
           type="button"
           onClick={() => void addDay()}
           disabled={busy || days.length >= 7}
-          className="min-h-11 rounded-xl bg-white px-3 text-sm font-bold text-[var(--ink)] ring-1 ring-black/10 disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-[var(--input)] px-3 text-sm font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] disabled:opacity-50"
         >
           + Day
         </button>
       </div>
 
       {activeDay && (
-        <section className="space-y-3 rounded-2xl bg-white/80 p-4 ring-1 ring-black/5">
+        <section className="space-y-3 rounded-2xl bg-[var(--card)] p-4 ring-1 ring-[var(--stroke)]">
           <div className="flex items-center gap-2">
             <input
               value={activeDay.name}
@@ -381,12 +413,12 @@ export function RoutineEditor({
                 );
               }}
               onBlur={(e) => void renameDay(activeDay.id, e.target.value.trim() || activeDay.name)}
-              className="min-h-11 flex-1 rounded-xl bg-[var(--canvas)] px-3 font-[family-name:var(--font-display)] text-xl font-bold ring-1 ring-black/5"
+              className="min-h-11 flex-1 rounded-xl bg-[var(--canvas)] px-3 font-[family-name:var(--font-display)] text-xl font-bold ring-1 ring-[var(--stroke)]"
             />
             <button
               type="button"
               onClick={() => void removeDay(activeDay.id)}
-              className="min-h-11 rounded-xl px-3 text-sm font-semibold text-red-700"
+              className="min-h-11 rounded-xl px-3 text-sm font-semibold text-[var(--danger)]"
             >
               Remove day
             </button>
@@ -396,28 +428,50 @@ export function RoutineEditor({
             {activeDay.exercises.map((ex) => (
                 <li
                   key={ex.id}
-                  className="rounded-xl bg-[var(--canvas)]/70 p-3 ring-1 ring-black/5"
+                  className="rounded-xl bg-[var(--canvas)]/70 p-3 ring-1 ring-[var(--stroke)]"
                 >
                   <div className="flex gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={ex.image_url ?? "/icon-192.png"}
                       alt=""
-                      className="h-14 w-14 rounded-lg object-cover bg-white"
+                      className="h-14 w-14 rounded-lg object-cover bg-[var(--input)]"
                     />
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-[var(--ink)]">{ex.name}</p>
                       <p className="text-xs text-[var(--muted)]">
                         {ex.muscle_group ?? "custom"}
                       </p>
+                      <div className="mt-1">
+                        <ExerciseHowToButton
+                          libraryId={ex.library_id}
+                          name={ex.name}
+                        />
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => void removeExercise(ex.id)}
-                      className="text-sm font-semibold text-red-700"
-                    >
-                      Remove
-                    </button>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void moveExercise(ex.id, -1)}
+                        className="min-h-9 rounded-lg px-2 text-xs font-bold text-[var(--muted)] ring-1 ring-[var(--stroke)]"
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void moveExercise(ex.id, 1)}
+                        className="min-h-9 rounded-lg px-2 text-xs font-bold text-[var(--muted)] ring-1 ring-[var(--stroke)]"
+                      >
+                        Down
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeExercise(ex.id)}
+                        className="text-sm font-semibold text-[var(--danger)]"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-3 space-y-2">
@@ -444,7 +498,7 @@ export function RoutineEditor({
                                   target_sets: Number(e.target.value),
                                 })
                               }
-                              className="min-h-9 rounded-lg bg-white px-2 ring-1 ring-black/10"
+                              className="min-h-9 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
                             />
                           </label>
                           <label className="flex flex-col gap-0.5">
@@ -458,7 +512,7 @@ export function RoutineEditor({
                                   rep_low: Number(e.target.value),
                                 })
                               }
-                              className="min-h-9 rounded-lg bg-white px-2 ring-1 ring-black/10"
+                              className="min-h-9 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
                             />
                           </label>
                           <label className="flex flex-col gap-0.5">
@@ -472,7 +526,7 @@ export function RoutineEditor({
                                   rep_high: Number(e.target.value),
                                 })
                               }
-                              className="min-h-9 rounded-lg bg-white px-2 ring-1 ring-black/10"
+                              className="min-h-9 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
                             />
                           </label>
                         </div>

@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Barlow_Condensed, Manrope } from "next/font/google";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { OfflineSync } from "@/components/OfflineSync";
+import { SettingsProvider } from "@/components/SettingsProvider";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
 const display = Barlow_Condensed({
@@ -15,13 +19,13 @@ const body = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "IronLog",
+  title: "Reps",
   description: "Mobile workout tracker with AI starting-weight suggestions.",
-  applicationName: "IronLog",
+  applicationName: "Reps",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "IronLog",
+    title: "Reps",
   },
   icons: {
     apple: "/apple-touch-icon.png",
@@ -37,17 +41,29 @@ export const viewport: Viewport = {
   themeColor: "#d6ff3f",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
 };
+
+const themeBoot = `(function(){try{var s=JSON.parse(localStorage.getItem("reps-settings")||"{}");var t=s.theme||"system";var dark=t==="dark"||(t==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=dark?"dark":"light";}catch(e){}})();`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${display.variable} ${body.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+      </head>
+      <body className="min-h-full flex flex-col">
+        <SettingsProvider>
+          <ServiceWorkerRegister />
+          <OfflineBanner />
+          <OfflineSync />
+          {children}
+        </SettingsProvider>
+      </body>
     </html>
   );
 }

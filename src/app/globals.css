@@ -1,13 +1,63 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --canvas: #eef2f0;
   --surface: #f7f9f8;
+  --card: #ffffff;
+  --input: #ffffff;
   --ink: #14201c;
   --muted: #5b6b64;
   --accent: #d6ff3f;
   --accent-soft: #eaf8a8;
   --accent-ink: #1a2a12;
+  --accent-text: #3d5214;
+  --chip: #eaf8a8;
+  --chip-ink: #1a2a12;
+  --solid: #14201c;
+  --on-solid: #f4f7f4;
+  --stroke: rgb(20 32 28 / 0.12);
+  --track: rgb(20 32 28 / 0.08);
+  --ok-bg: #d1fae5;
+  --ok-fg: #065f46;
+  --danger: #b91c1c;
+  --chart-grid: #d5ddd8;
+  --chart-tick: #5b6b64;
+  --chart-line: #1a2a12;
+  --chart-line-2: #3d6b52;
+  --chart-line-3: #8aa396;
+  --shadow: 0 20px 60px rgb(20 32 28 / 0.18);
+  --background: var(--canvas);
+  --foreground: var(--ink);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0c1210;
+  --surface: #161d1a;
+  --card: #232c28;
+  --input: #121916;
+  --ink: #f5f8f6;
+  --muted: #c9d5d0;
+  --accent: #d6ff3f;
+  --accent-soft: #3a5218;
+  --accent-ink: #14201c;
+  --accent-text: #e2ff6a;
+  --chip: #3a5218;
+  --chip-ink: #eaf8a8;
+  --solid: #3d4a44;
+  --on-solid: #f5f8f6;
+  --stroke: rgb(245 248 246 / 0.24);
+  --track: rgb(245 248 246 / 0.14);
+  --ok-bg: #16382c;
+  --ok-fg: #86efac;
+  --danger: #fca5a5;
+  --chart-grid: #3a4741;
+  --chart-tick: #c9d5d0;
+  --chart-line: #d6ff3f;
+  --chart-line-2: #7dd3a0;
+  --chart-line-3: #b8cfc4;
+  --shadow: 0 20px 60px rgb(0 0 0 / 0.5);
   --background: var(--canvas);
   --foreground: var(--ink);
 }
@@ -27,6 +77,41 @@ body {
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
   min-height: 100dvh;
+}
+
+html[data-theme="dark"] body {
+  background: var(--canvas);
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  color: var(--ink);
+  background-color: var(--input);
+}
+
+html[data-theme="dark"] ::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+html[data-theme="dark"] ::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+html[data-theme="dark"] option {
+  background: var(--card);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] input:-webkit-autofill,
+html[data-theme="dark"] textarea:-webkit-autofill,
+html[data-theme="dark"] select:-webkit-autofill {
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
+  box-shadow: 0 0 0 1000px var(--input) inset;
+  transition: background-color 9999s ease-out;
 }
 
 @keyframes rise-in {

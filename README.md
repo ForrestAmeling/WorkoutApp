@@ -1,6 +1,6 @@
-# IronLog — Workout Tracker
+# Reps — Workout Tracker
 
-Mobile-first PWA for logging your 3-week light/middle/heavy program with DeepSeek starting-weight suggestions.
+Mobile-first PWA for logging your program with DeepSeek starting-weight suggestions.
 
 ## Stack
 
@@ -14,7 +14,8 @@ Mobile-first PWA for logging your 3-week light/middle/heavy program with DeepSee
 2. In Supabase → Authentication → URL configuration, add:
    - Site URL: `http://localhost:3000`
    - Redirect URL: `http://localhost:3000/auth/callback`
-3. Install & run:
+3. Optional: run `supabase/session-unique.sql` in the SQL editor to block duplicate sessions.
+4. Install & run:
 
 ```bash
 npm install
@@ -25,7 +26,7 @@ Open on your phone (same Wi‑Fi) via your machine’s LAN IP, or deploy to Verc
 
 ## Data
 
-Program seed comes from `Workout_Tracker.csv` (32 exercises × 3 week foci). Regenerate SQL with:
+Program seed comes from `Workout_Tracker.csv` (32 exercises × 3 week foci). Regenerating SQL **does not wipe logged workouts**.
 
 ```bash
 node scripts/generate-seed.js
@@ -33,4 +34,4 @@ node scripts/generate-seed.js
 
 ## Units
 
-Pounds (lb) by default.
+Pounds (lb) by default. Switch to kilograms in Settings — values stay stored in pounds.

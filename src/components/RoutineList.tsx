@@ -17,9 +17,18 @@ export function RoutineList({ routines: initial }: { routines: Routine[] }) {
     setBusyId(id);
     setError(null);
     const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError("Not signed in");
+      setBusyId(null);
+      return;
+    }
     await supabase
       .from("routines")
       .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id)
       .neq("id", id);
     const { error: err } = await supabase
       .from("routines")
@@ -70,7 +79,7 @@ export function RoutineList({ routines: initial }: { routines: Routine[] }) {
       {routines.map((r) => (
         <article
           key={r.id}
-          className="rounded-2xl bg-white/80 p-4 ring-1 ring-black/5"
+          className="rounded-2xl bg-[var(--card)] p-4 ring-1 ring-[var(--stroke)]"
         >
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -87,7 +96,7 @@ export function RoutineList({ routines: initial }: { routines: Routine[] }) {
               </p>
             </div>
             {r.is_active && (
-              <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-bold text-[var(--accent-ink)]">
+              <span className="rounded-full bg-[var(--chip)] px-2.5 py-1 text-xs font-bold text-[var(--chip-ink)]">
                 Active
               </span>
             )}
@@ -115,13 +124,13 @@ export function RoutineList({ routines: initial }: { routines: Routine[] }) {
             )}
             <Link
               href={`/routines/${r.id}`}
-              className="min-h-11 rounded-xl bg-[var(--ink)] px-4 text-sm font-bold leading-[2.75rem] text-white"
+              className="min-h-11 rounded-xl bg-[var(--solid)] px-4 text-sm font-bold leading-[2.75rem] text-[var(--on-solid)]"
             >
               Customize
             </Link>
             <Link
               href={`/progress?routine=${encodeURIComponent(r.id)}`}
-              className="min-h-11 rounded-xl bg-white px-4 text-sm font-bold leading-[2.75rem] text-[var(--ink)] ring-1 ring-black/10"
+              className="min-h-11 rounded-xl bg-[var(--input)] px-4 text-sm font-bold leading-[2.75rem] text-[var(--ink)] ring-1 ring-[var(--stroke)]"
             >
               Progress
             </Link>
@@ -144,7 +153,7 @@ export function RoutineList({ routines: initial }: { routines: Routine[] }) {
                   setBusyId(null);
                 }
               }}
-              className="min-h-11 rounded-xl bg-white px-4 text-sm font-bold text-[var(--ink)] ring-1 ring-black/10"
+              className="min-h-11 rounded-xl bg-[var(--input)] px-4 text-sm font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)]"
             >
               {busyId === r.id ? "Copying…" : "Copy"}
             </button>
@@ -152,14 +161,14 @@ export function RoutineList({ routines: initial }: { routines: Routine[] }) {
               type="button"
               disabled={busyId === r.id}
               onClick={() => void remove(r.id)}
-              className="min-h-11 rounded-xl px-4 text-sm font-semibold text-red-700"
+              className="min-h-11 rounded-xl px-4 text-sm font-semibold text-[var(--danger)]"
             >
               Delete
             </button>
           </div>
         </article>
       ))}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
     </div>
   );
 }

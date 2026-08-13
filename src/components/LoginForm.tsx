@@ -133,7 +133,7 @@ export function LoginForm() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 rounded-xl bg-black/5 p-1">
+      <div className="flex gap-2 rounded-xl bg-[var(--canvas)] p-1 ring-1 ring-[var(--stroke)]">
         <button
           type="button"
           onClick={() => {
@@ -142,7 +142,7 @@ export function LoginForm() {
           }}
           className={`min-h-11 flex-1 rounded-lg text-sm font-bold ${
             tab === "password"
-              ? "bg-white text-[var(--ink)] shadow-sm"
+              ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
               : "text-[var(--muted)]"
           }`}
         >
@@ -156,7 +156,7 @@ export function LoginForm() {
           }}
           className={`min-h-11 flex-1 rounded-lg text-sm font-bold ${
             tab === "code"
-              ? "bg-white text-[var(--ink)] shadow-sm"
+              ? "bg-[var(--card)] text-[var(--ink)] shadow-sm"
               : "text-[var(--muted)]"
           }`}
         >
@@ -181,7 +181,7 @@ export function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="min-h-14 w-full rounded-xl bg-white px-4 text-base text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
           <div>
@@ -199,7 +199,7 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="min-h-14 w-full rounded-xl bg-white px-4 text-base text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
           <button
@@ -213,7 +213,7 @@ export function LoginForm() {
             type="button"
             disabled={busy}
             onClick={(e) => void createAccount(e)}
-            className="min-h-12 w-full rounded-xl bg-[var(--ink)] text-sm font-bold text-white disabled:opacity-60"
+            className="min-h-12 w-full rounded-xl bg-[var(--solid)] text-sm font-bold text-[var(--on-solid)] disabled:opacity-60"
           >
             Create account
           </button>
@@ -259,7 +259,7 @@ export function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="min-h-14 w-full rounded-xl bg-white px-4 text-base text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
           <div>
@@ -280,7 +280,7 @@ export function LoginForm() {
                 setOtp(e.target.value.replace(/\D/g, "").slice(0, 8))
               }
               placeholder="123456"
-              className="min-h-14 w-full rounded-xl bg-white px-4 text-center text-2xl font-bold tracking-[0.3em] text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-center text-2xl font-bold tracking-[0.3em] text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
           <button
@@ -319,7 +319,7 @@ export function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="min-h-14 w-full rounded-xl bg-white px-4 text-base text-[var(--ink)] ring-1 ring-black/10 outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
           <button
@@ -339,7 +339,7 @@ export function LoginForm() {
       {message && (
         <p
           className={`text-sm leading-relaxed ${
-            isError ? "text-red-600" : "text-[var(--muted)]"
+            isError ? "text-[var(--danger)]" : "text-[var(--muted)]"
           }`}
         >
           {message}

@@ -37,8 +37,8 @@ export function DayPicker({
               onClick={() => update(w, dayNumber)}
               className={`min-h-11 flex-1 rounded-xl text-sm font-semibold transition ${
                 w === weekFocus
-                  ? "bg-[var(--ink)] text-white shadow-sm"
-                  : "bg-white/70 text-[var(--muted)] ring-1 ring-black/5"
+                  ? "bg-[var(--solid)] text-[var(--on-solid)] shadow-sm"
+                  : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
               }`}
             >
               {WEEK_LABELS[w]}
@@ -55,7 +55,7 @@ export function DayPicker({
             className={`min-h-12 min-w-[3.25rem] flex-1 rounded-xl px-2 text-sm font-bold transition ${
               d.day_number === dayNumber
                 ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-sm"
-                : "bg-white/70 text-[var(--muted)] ring-1 ring-black/5"
+                : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
             }`}
           >
             {d.name}

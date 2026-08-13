@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { NewRoutineForm } from "@/components/NewRoutineForm";
+import { SettingsForm } from "@/components/SettingsForm";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function NewRoutinePage() {
+export default async function SettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -13,22 +12,15 @@ export default async function NewRoutinePage() {
 
   return (
     <AppShell>
-      <Link
-        href="/routines"
-        className="text-sm font-semibold text-[var(--muted)]"
-      >
-        ← Routines
-      </Link>
-      <header className="mt-3 mb-5">
+      <header className="mb-5">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
-          New routine
+          Settings
         </h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Pick days/week, then build or let AI draft it. Exercises come from
-          free-exercise-db.
+          Units, rest timer, appearance, and sign out
         </p>
       </header>
-      <NewRoutineForm />
+      <SettingsForm />
     </AppShell>
   );
 }

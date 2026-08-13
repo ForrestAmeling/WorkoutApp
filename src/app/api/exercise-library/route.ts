@@ -1,4 +1,5 @@
 import {
+  getLibraryExercise,
   loadExerciseLibrary,
   searchExerciseLibrary,
   uniqueEquipment,
@@ -8,6 +9,8 @@ import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id") ?? undefined;
+  const name = searchParams.get("name") ?? undefined;
   const q = searchParams.get("q") ?? undefined;
   const muscle = searchParams.get("muscle") ?? undefined;
   const equipment = searchParams.get("equipment") ?? undefined;
@@ -15,6 +18,14 @@ export async function GET(request: Request) {
   const limit = Number(searchParams.get("limit") ?? "40");
 
   try {
+    if (id || name) {
+      const exercise = await getLibraryExercise({ id, name });
+      if (!exercise) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return NextResponse.json({ exercise });
+    }
+
     if (meta) {
       const all = await loadExerciseLibrary();
       return NextResponse.json({
