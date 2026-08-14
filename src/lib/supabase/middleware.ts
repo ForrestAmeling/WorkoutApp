@@ -33,6 +33,7 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute =
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
+    path.startsWith("/flyer") ||
     path === "/api/stripe/webhook";
 
   if (!user && !isPublicRoute && path !== "/") {
