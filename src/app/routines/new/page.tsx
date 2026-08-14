@@ -1,18 +1,17 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { NewRoutineForm } from "@/components/NewRoutineForm";
-import { createClient } from "@/lib/supabase/server";
+import { requireBillingPage } from "@/lib/require-billing";
+import { billingNotice } from "@/lib/subscription-access";
 
 export default async function NewRoutinePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { subscription } = await requireBillingPage();
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <Link
         href="/routines"
         className="text-sm font-semibold text-[var(--muted)]"

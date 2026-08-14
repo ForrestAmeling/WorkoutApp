@@ -1,3 +1,4 @@
+import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
 import {
   buildDeepSeekPrompt,
@@ -17,6 +18,8 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
 
   const body = await request.json();
   const exerciseId = body.exercise_id as string | undefined;

@@ -1,22 +1,21 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { RoutineList } from "@/components/RoutineList";
-import { createClient } from "@/lib/supabase/server";
+import { requireBillingPage } from "@/lib/require-billing";
+import { billingNotice } from "@/lib/subscription-access";
 import { ensureUserRoutines, listRoutines } from "@/lib/routines";
 
 export default async function RoutinesPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { user, supabase, subscription } = await requireBillingPage();
 
   await ensureUserRoutines(supabase, user.id);
   const routines = await listRoutines(supabase, user.id);
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <header className="mb-5 flex items-end justify-between gap-3">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">

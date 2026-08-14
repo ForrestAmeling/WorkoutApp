@@ -217,6 +217,9 @@ export function LoginForm() {
           >
             Create account
           </button>
+          <p className="text-center text-xs text-[var(--muted)]">
+            Creating an account starts your 1-month free trial.
+          </p>
           <button
             type="button"
             disabled={busy || !email.trim()}

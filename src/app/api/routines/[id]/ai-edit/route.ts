@@ -8,6 +8,7 @@ import {
   promptAsksForSetRepChanges,
   type PeriodizationMode,
 } from "@/lib/periodization";
+import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
 import {
   loadRoutineEditor,
@@ -54,6 +55,8 @@ export async function POST(request: Request, { params }: Props) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
 
   const body = await request.json();
   const prompt = String(body.prompt ?? "").trim();

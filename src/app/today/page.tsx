@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { WorkoutSession } from "@/components/WorkoutSession";
-import { createClient } from "@/lib/supabase/server";
+import { requireBillingPage } from "@/lib/require-billing";
 import { modeLabel, showsWeekPicker } from "@/lib/periodization";
 import { isISODate, todayISO, WEEK_LABELS } from "@/lib/program";
+import { billingNotice } from "@/lib/subscription-access";
 import {
   ensureCycle,
   findSession,
@@ -22,12 +22,7 @@ type Props = {
 
 export default async function TodayPage({ searchParams }: Props) {
   const params = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
+  const { user, supabase, subscription } = await requireBillingPage();
 
   const performedOn = isISODate(params.date) ? params.date : todayISO();
   const { routine, days } = await loadActiveWorkoutContext(supabase, user.id);
@@ -80,7 +75,10 @@ export default async function TodayPage({ searchParams }: Props) {
         : `${modeLabel(mode)} · ${dayName}`;
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
         <WorkoutSession
           title={title}

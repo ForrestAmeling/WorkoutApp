@@ -1,3 +1,4 @@
+import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
 import { copyRoutine } from "@/lib/routines";
 import { NextResponse } from "next/server";
@@ -13,6 +14,8 @@ export async function POST(_request: Request, { params }: Props) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
 
   try {
     const routine = await copyRoutine(supabase, user.id, id);

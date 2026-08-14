@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
 import {
@@ -7,19 +6,16 @@ import {
   type AiAccuracy,
 } from "@/lib/progress";
 import { shiftISODate, todayISO } from "@/lib/program";
+import { requireBillingPage } from "@/lib/require-billing";
 import { ensureUserRoutines, getActiveRoutine, listRoutines } from "@/lib/routines";
-import { createClient } from "@/lib/supabase/server";
+import { billingNotice } from "@/lib/subscription-access";
 
 type Props = {
   searchParams: Promise<{ routine?: string }>;
 };
 
 export default async function ProgressPage({ searchParams }: Props) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { user, supabase, subscription } = await requireBillingPage();
 
   await ensureUserRoutines(supabase, user.id);
   const routines = await listRoutines(supabase, user.id);
@@ -56,7 +52,10 @@ export default async function ProgressPage({ searchParams }: Props) {
   const weekStart = shiftISODate(todayISO(), -6);
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <header className="mb-4 animate-rise">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
           Progress

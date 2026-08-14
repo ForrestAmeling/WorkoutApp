@@ -5,9 +5,21 @@ import {
   uniqueEquipment,
   uniqueMuscles,
 } from "@/lib/exercise-library";
+import { billingApiError } from "@/lib/require-billing";
+import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id") ?? undefined;
   const name = searchParams.get("name") ?? undefined;

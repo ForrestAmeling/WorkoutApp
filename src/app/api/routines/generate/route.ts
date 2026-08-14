@@ -6,6 +6,7 @@ import {
   parsePeriodizationMode,
   type PeriodizationMode,
 } from "@/lib/periodization";
+import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
 import type { RoutineDayInput, WeekFocus } from "@/lib/types";
 import { NextResponse } from "next/server";
@@ -86,6 +87,8 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
 
   const body = await request.json();
   const prompt = String(body.prompt ?? "").trim();

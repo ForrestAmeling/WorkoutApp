@@ -1,16 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { createClient } from "@/lib/supabase/server";
+import { requireBillingPage } from "@/lib/require-billing";
+import { billingNotice } from "@/lib/subscription-access";
 import { formatHumanDate, WEEK_LABELS } from "@/lib/program";
 import type { WeekFocus } from "@/lib/types";
 
 export default async function HistoryPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { user, supabase, subscription } = await requireBillingPage();
 
   const { data: sessions } = await supabase
     .from("sessions")
@@ -55,7 +51,10 @@ export default async function HistoryPage() {
   });
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <header className="mb-4">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
           History

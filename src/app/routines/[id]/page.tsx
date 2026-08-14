@@ -1,26 +1,26 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { RoutineEditor } from "@/components/RoutineEditor";
 import { StartWorkoutButton } from "@/components/StartWorkoutButton";
-import { createClient } from "@/lib/supabase/server";
+import { requireBillingPage } from "@/lib/require-billing";
+import { billingNotice } from "@/lib/subscription-access";
 import { loadRoutineEditor } from "@/lib/routines";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function RoutineDetailPage({ params }: Props) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { user, supabase, subscription } = await requireBillingPage();
 
   const data = await loadRoutineEditor(supabase, id);
   if (!data || data.routine.user_id !== user.id) notFound();
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <Link
         href="/routines"
         className="text-sm font-semibold text-[var(--muted)]"

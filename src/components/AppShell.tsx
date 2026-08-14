@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { BillingNotice } from "@/lib/subscription-access";
 
 const TABS = [
   { href: "/today", label: "Today" },
@@ -10,8 +11,22 @@ const TABS = [
   { href: "/history", label: "History" },
 ] as const;
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  billingNotice,
+  trialEnd,
+}: {
+  children: React.ReactNode;
+  billingNotice?: BillingNotice;
+  trialEnd?: string | null;
+}) {
   const pathname = usePathname();
+  const trialLabel = trialEnd
+    ? new Date(trialEnd).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : null;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col">
@@ -30,6 +45,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             Settings
           </Link>
         </div>
+        {billingNotice === "past_due" ? (
+          <Link
+            href="/settings"
+            className="block border-t border-[var(--stroke)] px-4 py-2 text-sm font-semibold text-[var(--danger)]"
+          >
+            Payment failed. Update your card to stay subscribed.
+          </Link>
+        ) : null}
+        {billingNotice === "trial_ending" ? (
+          <Link
+            href="/settings"
+            className="block border-t border-[var(--stroke)] bg-[var(--accent-soft)] px-4 py-2 text-sm font-semibold text-[var(--accent-text)]"
+          >
+            Trial ends{trialLabel ? ` ${trialLabel}` : " soon"}. Add a card to
+            keep access.
+          </Link>
+        ) : null}
       </header>
       <main className="flex-1 px-4 pb-28 pt-5">{children}</main>
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--stroke)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)]">

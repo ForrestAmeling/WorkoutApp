@@ -30,10 +30,12 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isAuthRoute =
-    path.startsWith("/login") || path.startsWith("/auth");
+  const isPublicRoute =
+    path.startsWith("/login") ||
+    path.startsWith("/auth") ||
+    path === "/api/stripe/webhook";
 
-  if (!user && !isAuthRoute && path !== "/") {
+  if (!user && !isPublicRoute && path !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

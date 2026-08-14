@@ -1,3 +1,4 @@
+import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
 import { parsePeriodizationMode } from "@/lib/periodization";
 import { createRoutineFromDays, listRoutines } from "@/lib/routines";
@@ -12,6 +13,8 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
   const routines = await listRoutines(supabase, user.id);
   return NextResponse.json({ routines });
 }
@@ -24,6 +27,8 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await billingApiError(user.id);
+  if (denied) return denied;
 
   const body = await request.json();
   const name = String(body.name ?? "").trim();

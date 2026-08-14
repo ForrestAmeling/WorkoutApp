@@ -10,7 +10,8 @@ export default function LoginPage() {
           Reps
         </h1>
         <p className="mt-1 mb-5 text-sm text-[var(--muted)]">
-          Password for everyday use, or email code when you need it.
+          Password for everyday use, or email code when you need it. New
+          accounts include a 1-month free trial.
         </p>
         <Suspense fallback={<p className="text-sm text-[var(--muted)]">Loading…</p>}>
           <LoginForm />

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { WeightText } from "@/components/WeightText";
-import { createClient } from "@/lib/supabase/server";
+import { requireBillingPage } from "@/lib/require-billing";
+import { billingNotice } from "@/lib/subscription-access";
 import { formatHumanDate, WEEK_LABELS } from "@/lib/program";
 import type { WeekFocus } from "@/lib/types";
 
@@ -12,11 +13,7 @@ type Props = {
 
 export default async function SessionDetailPage({ params }: Props) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { user, supabase, subscription } = await requireBillingPage();
 
   const { data: session } = await supabase
     .from("sessions")
@@ -52,7 +49,10 @@ export default async function SessionDetailPage({ params }: Props) {
   }
 
   return (
-    <AppShell>
+    <AppShell
+      billingNotice={billingNotice(subscription)}
+      trialEnd={subscription?.trial_end}
+    >
       <Link
         href="/history"
         className="text-sm font-semibold text-[var(--muted)]"
