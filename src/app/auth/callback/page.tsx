@@ -47,7 +47,7 @@ function CallbackInner() {
         if (error) {
           router.replace(
             `/login?error=${encodeURIComponent(
-              `${error.message}. Tip: enter the 6-digit code from the email instead — magic links fail when your email app opens a different browser.`
+              `${error.message}. Tip: enter the 8-digit code from the email instead — magic links fail when your email app opens a different browser.`
             )}`
           );
           return;

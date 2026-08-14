@@ -67,7 +67,7 @@ export function LoginForm() {
     if (error) {
       if (isEmailNotConfirmed(error)) {
         goToSignupVerify(
-          "Check your email for a 6-digit code, then enter it below to finish signing up."
+          "Check your email for an 8-digit code, then enter it below to finish signing up."
         );
         return;
       }
@@ -102,7 +102,7 @@ export function LoginForm() {
       return;
     }
     goToSignupVerify(
-      "Account created. Enter the 6-digit code we emailed you to finish signing up."
+      "Account created. Enter the 8-digit code we emailed you to finish signing up."
     );
   }
 
@@ -160,7 +160,7 @@ export function LoginForm() {
     }
     setCodeStep("verify");
     showInfo(
-      "Email sent. Enter the 6-digit code (more reliable than the link on phones)."
+      "Email sent. Enter the 8-digit code (more reliable than the link on phones)."
     );
   }
 
@@ -189,7 +189,7 @@ export function LoginForm() {
         htmlFor="otp"
         className="mb-1 block text-sm font-semibold text-[var(--ink)]"
       >
-        6-digit code
+        8-digit code
       </label>
       <input
         id="otp"
@@ -199,7 +199,7 @@ export function LoginForm() {
         required
         value={otp}
         onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
-        placeholder="123456"
+        placeholder="12345678"
         className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-center text-2xl font-bold tracking-[0.3em] text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
       />
     </div>
