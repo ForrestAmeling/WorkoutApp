@@ -10,6 +10,7 @@ import {
 import type { LibraryExercise, RoutineDayInput } from "@/lib/types";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
+import { libraryToExercisePatch } from "@/lib/exercise-library";
 
 type Mode = "choose" | "manual" | "ai" | "review";
 
@@ -356,6 +357,21 @@ export function NewRoutineForm() {
                   <ExerciseHowToButton
                     libraryId={ex.library_id}
                     name={ex.name}
+                    onSwitch={(lib) => {
+                      const patch = libraryToExercisePatch(lib);
+                      setDays((prev) =>
+                        prev.map((d, i) =>
+                          i !== activeDay
+                            ? d
+                            : {
+                                ...d,
+                                exercises: d.exercises.map((item, j) =>
+                                  j !== idx ? item : { ...item, ...patch }
+                                ),
+                              }
+                        )
+                      );
+                    }}
                   />
                 </div>
                 <button

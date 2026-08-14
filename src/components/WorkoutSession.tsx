@@ -182,6 +182,13 @@ export function WorkoutSession({
               onOpenChange={(next) => setOpenId(next ? ex.id : null)}
               onSetsChange={onSetsChange}
               onLogged={onLogged}
+              onReplaced={(id, patch) =>
+                setExercises((prev) =>
+                  prev.map((item) =>
+                    item.id === id ? { ...item, ...patch } : item
+                  )
+                )
+              }
             />
           </div>
         ))}

@@ -137,3 +137,12 @@ export function uniqueEquipment(list: LibraryExercise[]) {
   }
   return [...set].sort();
 }
+
+export function libraryToExercisePatch(lib: LibraryExercise) {
+  return {
+    name: lib.name,
+    library_id: lib.id,
+    image_url: lib.imageUrl,
+    muscle_group: lib.primaryMuscles[0] ?? null,
+  };
+}

@@ -20,11 +20,13 @@ export function InstallPrompt() {
 
   return (
     <div className="rounded-2xl bg-[var(--card)] px-4 py-3 ring-1 ring-[var(--stroke)]">
-      <p className="text-sm font-bold text-[var(--ink)]">Add Reps to your home screen</p>
+      <p className="text-sm font-bold text-[var(--ink)]">
+        No App Store app — this is a phone website
+      </p>
       <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
         {isIOS
-          ? "Tap Share, then Add to Home Screen — works like an app at the gym."
-          : "Use your browser menu → Add to Home Screen (or Install app)."}
+          ? "Reps lives in the browser so you can skip the stores. In Safari, tap Share, then Add to Home Screen."
+          : "Reps lives in the browser so you can skip the stores. Use your browser menu, then Add to Home Screen."}
       </p>
       <button
         type="button"

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
+import { libraryToExercisePatch } from "@/lib/exercise-library";
 import {
   defaultTargetsForFocus,
   fociForMode,
@@ -194,6 +195,25 @@ export function RoutineEditor({
           ? { ...d, exercises: [...d.exercises, editorEx] }
           : d
       )
+    );
+    router.refresh();
+  }
+
+  async function switchExercise(exerciseId: string, lib: LibraryExercise) {
+    const patch = libraryToExercisePatch(lib);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("exercises")
+      .update(patch)
+      .eq("id", exerciseId);
+    if (error) throw new Error(error.message);
+    setDays((prev) =>
+      prev.map((d) => ({
+        ...d,
+        exercises: d.exercises.map((e) =>
+          e.id === exerciseId ? { ...e, ...patch } : e
+        ),
+      }))
     );
     router.refresh();
   }
@@ -446,6 +466,7 @@ export function RoutineEditor({
                         <ExerciseHowToButton
                           libraryId={ex.library_id}
                           name={ex.name}
+                          onSwitch={(lib) => switchExercise(ex.id, lib)}
                         />
                       </div>
                     </div>

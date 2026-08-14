@@ -5,12 +5,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Tab = "password" | "code";
+type PasswordStep = "credentials" | "verifySignup";
 type CodeStep = "request" | "verify";
+
+function isEmailNotConfirmed(error: { message: string; code?: string }) {
+  return (
+    error.code === "email_not_confirmed" ||
+    error.message.toLowerCase().includes("email not confirmed")
+  );
+}
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("password");
+  const [passwordStep, setPasswordStep] = useState<PasswordStep>("credentials");
   const [codeStep, setCodeStep] = useState<CodeStep>("request");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +48,12 @@ export function LoginForm() {
     setMessage(text);
   }
 
+  function goToSignupVerify(info: string) {
+    setPasswordStep("verifySignup");
+    setOtp("");
+    showInfo(info);
+  }
+
   async function signInWithPassword(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -50,6 +65,12 @@ export function LoginForm() {
     });
     setBusy(false);
     if (error) {
+      if (isEmailNotConfirmed(error)) {
+        goToSignupVerify(
+          "Check your email for a 6-digit code, then enter it below to finish signing up."
+        );
+        return;
+      }
       showError(error.message);
       return;
     }
@@ -69,24 +90,55 @@ export function LoginForm() {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
     });
     setBusy(false);
     if (error) {
       showError(error.message);
       return;
     }
-    // If email confirmations are off, session is created immediately
     if (data.session) {
       router.replace("/today");
       router.refresh();
       return;
     }
-    showInfo(
-      "Account created. If your project requires email confirmation, check your inbox — otherwise sign in with your password."
+    goToSignupVerify(
+      "Account created. Enter the 6-digit code we emailed you to finish signing up."
     );
+  }
+
+  async function verifySignupCode(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: otp.trim(),
+      type: "signup",
+    });
+    setBusy(false);
+    if (error) {
+      showError(error.message);
+      return;
+    }
+    router.replace("/today");
+    router.refresh();
+  }
+
+  async function resendSignupCode() {
+    setBusy(true);
+    setMessage(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+    });
+    setBusy(false);
+    if (error) {
+      showError(error.message);
+      return;
+    }
+    showInfo("New code sent. Check your inbox (and spam).");
   }
 
   async function sendCode(e: React.FormEvent) {
@@ -131,6 +183,28 @@ export function LoginForm() {
     router.refresh();
   }
 
+  const otpInput = (
+    <div>
+      <label
+        htmlFor="otp"
+        className="mb-1 block text-sm font-semibold text-[var(--ink)]"
+      >
+        6-digit code
+      </label>
+      <input
+        id="otp"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="[0-9]*"
+        required
+        value={otp}
+        onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
+        placeholder="123456"
+        className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-center text-2xl font-bold tracking-[0.3em] text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      />
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2 rounded-xl bg-[var(--canvas)] p-1 ring-1 ring-[var(--stroke)]">
@@ -138,6 +212,7 @@ export function LoginForm() {
           type="button"
           onClick={() => {
             setTab("password");
+            setPasswordStep("credentials");
             setMessage(null);
           }}
           className={`min-h-11 flex-1 rounded-lg text-sm font-bold ${
@@ -164,7 +239,53 @@ export function LoginForm() {
         </button>
       </div>
 
-      {tab === "password" ? (
+      {tab === "password" && passwordStep === "verifySignup" ? (
+        <form onSubmit={verifySignupCode} className="space-y-4">
+          <div>
+            <label
+              htmlFor="email-signup"
+              className="mb-1 block text-sm font-semibold text-[var(--ink)]"
+            >
+              Email
+            </label>
+            <input
+              id="email-signup"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            />
+          </div>
+          {otpInput}
+          <button
+            type="submit"
+            disabled={busy}
+            className="min-h-14 w-full rounded-xl bg-[var(--accent)] text-base font-bold text-[var(--accent-ink)] disabled:opacity-60"
+          >
+            {busy ? "Verifying…" : "Verify code"}
+          </button>
+          <button
+            type="button"
+            disabled={busy || !email.trim()}
+            onClick={() => void resendSignupCode()}
+            className="w-full text-sm font-semibold text-[var(--muted)] disabled:opacity-50"
+          >
+            Send a new code
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPasswordStep("credentials");
+              setOtp("");
+              setMessage(null);
+            }}
+            className="w-full text-sm font-semibold text-[var(--muted)]"
+          >
+            Back to sign in
+          </button>
+        </form>
+      ) : tab === "password" ? (
         <form onSubmit={signInWithPassword} className="space-y-4">
           <div>
             <label
@@ -265,27 +386,7 @@ export function LoginForm() {
               className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
-          <div>
-            <label
-              htmlFor="otp"
-              className="mb-1 block text-sm font-semibold text-[var(--ink)]"
-            >
-              6-digit code
-            </label>
-            <input
-              id="otp"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]*"
-              required
-              value={otp}
-              onChange={(e) =>
-                setOtp(e.target.value.replace(/\D/g, "").slice(0, 8))
-              }
-              placeholder="123456"
-              className="min-h-14 w-full rounded-xl bg-[var(--input)] px-4 text-center text-2xl font-bold tracking-[0.3em] text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-          </div>
+          {otpInput}
           <button
             type="submit"
             disabled={busy}

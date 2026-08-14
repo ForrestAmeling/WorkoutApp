@@ -17,7 +17,8 @@ import {
   weightStep,
 } from "@/lib/units";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
-import type { ExerciseWithTarget, SetLog, WeekFocus } from "@/lib/types";
+import { libraryToExercisePatch } from "@/lib/exercise-library";
+import type { ExerciseWithTarget, LibraryExercise, SetLog, WeekFocus } from "@/lib/types";
 
 export function ExerciseCard({
   exercise,
@@ -31,6 +32,7 @@ export function ExerciseCard({
   onOpenChange,
   onSetsChange,
   onLogged,
+  onReplaced,
 }: {
   exercise: ExerciseWithTarget;
   sessionId: string | null;
@@ -43,6 +45,10 @@ export function ExerciseCard({
   onOpenChange: (open: boolean) => void;
   onSetsChange: (exerciseId: string, sets: SetLog[]) => void;
   onLogged: () => void;
+  onReplaced?: (
+    exerciseId: string,
+    patch: ReturnType<typeof libraryToExercisePatch>
+  ) => void;
 }) {
   const { settings } = useSettings();
   const unit = settings.unit;
@@ -89,6 +95,17 @@ export function ExerciseCard({
   function commitSets(next: SetLog[]) {
     setSets(next);
     onSetsChange(exercise.id, next);
+  }
+
+  async function replaceExercise(lib: LibraryExercise) {
+    const patch = libraryToExercisePatch(lib);
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("exercises")
+      .update(patch)
+      .eq("id", exercise.id);
+    if (updateError) throw new Error(updateError.message);
+    onReplaced?.(exercise.id, patch);
   }
 
   async function fetchSuggestion() {
@@ -373,6 +390,7 @@ export function ExerciseCard({
           <ExerciseHowToButton
             libraryId={exercise.library_id}
             name={exercise.name}
+            onSwitch={replaceExercise}
           />
         </div>
       </div>

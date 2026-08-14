@@ -8,10 +8,12 @@ export function ExerciseHowToButton({
   libraryId,
   name,
   exercise,
+  onSwitch,
 }: {
   libraryId?: string | null;
   name: string;
   exercise?: LibraryExercise | null;
+  onSwitch?: (ex: LibraryExercise) => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -29,6 +31,7 @@ export function ExerciseHowToButton({
           libraryId={libraryId}
           name={name}
           preset={exercise ?? null}
+          onSwitch={onSwitch}
           onClose={() => setOpen(false)}
         />
       ) : null}
@@ -40,20 +43,25 @@ function ExerciseHowToSheet({
   libraryId,
   name,
   preset,
+  onSwitch,
   onClose,
 }: {
   libraryId?: string | null;
   name: string;
   preset: LibraryExercise | null;
+  onSwitch?: (ex: LibraryExercise) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [guide, setGuide] = useState<LibraryExercise | null>(preset);
   const [loading, setLoading] = useState(!preset);
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [searchQ, setSearchQ] = useState(name);
   const [results, setResults] = useState<LibraryExercise[]>([]);
   const [showSearch, setShowSearch] = useState(false);
+  const canSwitch =
+    Boolean(onSwitch && guide) && guide!.id !== (libraryId ?? "");
 
   useEffect(() => {
     if (preset) return;
@@ -87,6 +95,19 @@ function ExerciseHowToSheet({
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQ, showSearch]);
+
+  async function switchToGuide(ex: LibraryExercise) {
+    if (!onSwitch) return;
+    setSwitching(true);
+    setError(null);
+    try {
+      await onSwitch(ex);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not switch exercise");
+      setSwitching(false);
+    }
+  }
 
   async function runSearch(q: string) {
     setSearching(true);
@@ -142,7 +163,9 @@ function ExerciseHowToSheet({
               </p>
             ) : showSearch ? (
               <p className="mt-0.5 text-xs text-[var(--muted)]">
-                Search free-exercise-db for the matching movement.
+                {onSwitch
+                  ? "Pick the right movement, then switch this slot to it."
+                  : "Search free-exercise-db for the matching movement."}
               </p>
             ) : null}
           </div>
@@ -160,7 +183,7 @@ function ExerciseHowToSheet({
             <p className="text-sm text-[var(--muted)]">Loading guide…</p>
           ) : null}
 
-          {error && !showSearch ? (
+          {error ? (
             <p className="text-sm text-[var(--danger)]">{error}</p>
           ) : null}
 
@@ -207,6 +230,16 @@ function ExerciseHowToSheet({
               <p className="text-[11px] text-[var(--muted)]">
                 Form photos and steps from free-exercise-db.
               </p>
+              {canSwitch ? (
+                <button
+                  type="button"
+                  disabled={switching}
+                  onClick={() => void switchToGuide(guide!)}
+                  className="min-h-12 w-full rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-ink)] disabled:opacity-60"
+                >
+                  {switching ? "Switching…" : `Switch this slot to ${guide!.name}`}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setShowSearch(true)}
@@ -239,32 +272,44 @@ function ExerciseHowToSheet({
                 {!searching &&
                   results.map((ex) => (
                     <li key={ex.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGuide(ex);
-                          setShowSearch(false);
-                          setError(null);
-                        }}
-                        className="flex w-full items-center gap-3 rounded-2xl bg-[var(--card)] px-3 py-2 text-left ring-1 ring-[var(--stroke)]"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={ex.imageUrl ?? "/icon-192.png"}
-                          alt=""
-                          className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-[var(--ink)]">
-                            {ex.name}
-                          </p>
-                          <p className="truncate text-xs text-[var(--muted)]">
-                            {[ex.primaryMuscles[0], ex.equipment]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        </div>
-                      </button>
+                      <div className="flex items-center gap-2 rounded-2xl bg-[var(--card)] px-3 py-2 ring-1 ring-[var(--stroke)]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGuide(ex);
+                            setShowSearch(false);
+                            setError(null);
+                          }}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={ex.imageUrl ?? "/icon-192.png"}
+                            alt=""
+                            className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-[var(--ink)]">
+                              {ex.name}
+                            </p>
+                            <p className="truncate text-xs text-[var(--muted)]">
+                              {[ex.primaryMuscles[0], ex.equipment]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </div>
+                        </button>
+                        {onSwitch && ex.id !== (libraryId ?? "") ? (
+                          <button
+                            type="button"
+                            disabled={switching}
+                            onClick={() => void switchToGuide(ex)}
+                            className="shrink-0 rounded-xl bg-[var(--accent)] px-3 py-2 text-xs font-bold text-[var(--accent-ink)] disabled:opacity-60"
+                          >
+                            Switch
+                          </button>
+                        ) : null}
+                      </div>
                     </li>
                   ))}
                 {!searching && results.length === 0 ? (
