@@ -72,7 +72,7 @@ export function AppShell({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`min-h-14 px-1 py-2 text-center text-xs font-bold ${
+                className={`flex min-h-14 items-center justify-center px-1 py-2 text-base font-bold ${
                   active
                     ? "bg-[var(--accent)] text-[var(--accent-ink)]"
                     : "text-[var(--muted)]"

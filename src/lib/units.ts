@@ -34,3 +34,18 @@ export function roundSuggestion(lb: number, unit: WeightUnit): number {
   }
   return Math.round(lb / 2.5) * 2.5;
 }
+
+const DECIMAL_INPUT_PATTERN = /^\d*\.?\d*$/;
+
+/**
+ * True while `value` is a valid (possibly in-progress) decimal a user could
+ * be typing, e.g. "", ".", "62", "62.", "62.5". Filter onChange on
+ * controlled weight inputs with this instead of coercing to Number() on
+ * every keystroke — coercing snaps the field's displayed value back to the
+ * already-stored number and makes it impossible to ever type a "." (e.g.
+ * "62." parses to the same 62 already stored, so the input re-renders as
+ * "62" and the next digit appends to that instead of after the decimal).
+ */
+export function isPartialDecimal(value: string): boolean {
+  return DECIMAL_INPUT_PATTERN.test(value);
+}

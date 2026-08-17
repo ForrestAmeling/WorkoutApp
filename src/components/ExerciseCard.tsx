@@ -12,12 +12,14 @@ import { useSettings } from "@/components/SettingsProvider";
 import {
   displayToLb,
   formatWeight,
+  isPartialDecimal,
   lbToDisplay,
   unitLabel,
   weightStep,
 } from "@/lib/units";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { libraryToExercisePatch } from "@/lib/exercise-library";
+import { SET_SYNCED_EVENT, type SetSyncedDetail } from "@/lib/set-sync-events";
 import type { ExerciseWithTarget, LibraryExercise, SetLog, WeekFocus } from "@/lib/types";
 
 export function ExerciseCard({
@@ -54,7 +56,8 @@ export function ExerciseCard({
   const unit = settings.unit;
   const [sets, setSets] = useState<SetLog[]>(exercise.sets);
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId);
-  const [weight, setWeight] = useState<number | "">("");
+  const [weight, setWeight] = useState<string>("");
+  const [bodyweight, setBodyweight] = useState(false);
   const [reps, setReps] = useState<number | "">("");
   const [notes, setNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
@@ -64,7 +67,8 @@ export function ExerciseCard({
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editWeight, setEditWeight] = useState<number | "">("");
+  const [editWeight, setEditWeight] = useState<string>("");
+  const [editBodyweight, setEditBodyweight] = useState(false);
   const [editReps, setEditReps] = useState<number | "">("");
   const [editNotes, setEditNotes] = useState("");
   const [loggingExtra, setLoggingExtra] = useState(false);
@@ -87,10 +91,29 @@ export function ExerciseCard({
   }, [initialSessionId]);
 
   useEffect(() => {
-    if (!open || weight !== "" || sets.length > 0) return;
+    if (!open || weight !== "" || bodyweight || sets.length > 0) return;
     void fetchSuggestion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Reconcile a set that was saved to the offline queue once OfflineSync
+  // confirms it actually made it to Supabase — swaps the temporary
+  // "local-…" id for the real row so editing/deleting it stops being
+  // blocked (previously only cleared on a full page reload).
+  useEffect(() => {
+    function onSynced(e: Event) {
+      const { localId, row } = (e as CustomEvent<SetSyncedDetail>).detail;
+      setSets((prev) => {
+        if (!prev.some((s) => s.id === localId)) return prev;
+        const next = prev.map((s) => (s.id === localId ? row : s));
+        onSetsChange(exercise.id, next);
+        return next;
+      });
+    }
+    window.addEventListener(SET_SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(SET_SYNCED_EVENT, onSynced);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercise.id]);
 
   function commitSets(next: SetLog[]) {
     setSets(next);
@@ -131,7 +154,7 @@ export function ExerciseCard({
       const data = await res.json();
       if (data.suggested_weight != null) {
         const lb = Number(data.suggested_weight);
-        setWeight(lbToDisplay(lb, unit));
+        setWeight(String(lbToDisplay(lb, unit)));
         setAiSuggested(lb);
         setRationale(data.rationale ?? null);
       } else {
@@ -202,14 +225,15 @@ export function ExerciseCard({
   }
 
   async function logSet() {
-    if (weight === "" || reps === "") {
+    if (busy) return;
+    if ((!bodyweight && weight === "") || reps === "") {
       setError("Enter weight and reps");
       return;
     }
     setBusy(true);
     setError(null);
     const supabase = createClient();
-    const lb = displayToLb(Number(weight), unit);
+    const lb = bodyweight ? null : displayToLb(Number(weight), unit);
     const payload = {
       exercise_id: exercise.id,
       set_number: nextSet,
@@ -267,7 +291,7 @@ export function ExerciseCard({
   }
 
   async function saveEdit(set: SetLog) {
-    if (editWeight === "" || editReps === "") {
+    if ((!editBodyweight && editWeight === "") || editReps === "") {
       setError("Enter weight and reps");
       return;
     }
@@ -278,7 +302,7 @@ export function ExerciseCard({
     setBusy(true);
     setError(null);
     const supabase = createClient();
-    const lb = displayToLb(Number(editWeight), unit);
+    const lb = editBodyweight ? null : displayToLb(Number(editWeight), unit);
     const { data, error: updateError } = await supabase
       .from("set_logs")
       .update({
@@ -319,21 +343,33 @@ export function ExerciseCard({
     const remaining = sets
       .filter((s) => s.id !== set.id)
       .map((s, i) => ({ ...s, set_number: i + 1 }));
+    // Renumber the sets that shifted down. Track failures instead of
+    // assuming success — on the same flaky connections that make saving a
+    // set fail (see isNetworkError), one of these updates can fail while
+    // the rest succeed, leaving the DB's set_number out of sync with what
+    // we're about to show. Surface that instead of silently proceeding.
+    let renumberFailed = false;
     for (const s of remaining) {
       if (s.id.startsWith("local-")) continue;
-      await supabase
+      const { error: renumberError } = await supabase
         .from("set_logs")
         .update({ set_number: s.set_number })
         .eq("id", s.id);
+      if (renumberError) renumberFailed = true;
     }
     commitSets(remaining);
     setEditingId(null);
+    if (renumberFailed) {
+      setError(
+        "Set deleted, but renumbering the rest failed — reload to make sure the order is right."
+      );
+    }
   }
 
   function bumpWeight(delta: number) {
     setWeight((w) => {
       const base = w === "" ? 0 : Number(w);
-      return Math.max(0, Math.round((base + delta) * 4) / 4);
+      return String(Math.max(0, Math.round((base + delta) * 4) / 4));
     });
   }
 
@@ -346,7 +382,10 @@ export function ExerciseCard({
 
   function startEdit(s: SetLog) {
     setEditingId(s.id);
-    setEditWeight(s.weight == null ? "" : lbToDisplay(Number(s.weight), unit));
+    setEditBodyweight(s.weight == null);
+    setEditWeight(
+      s.weight == null ? "" : String(lbToDisplay(Number(s.weight), unit))
+    );
     setEditReps(s.reps ?? "");
     setEditNotes(s.notes ?? "");
     onOpenChange(true);
@@ -401,25 +440,44 @@ export function ExerciseCard({
             <li key={s.id} className="text-sm text-[var(--ink)]">
               {editingId === s.id ? (
                 <div className="space-y-2 rounded-xl bg-[var(--canvas)]/70 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-                    Edit set {s.set_number}
-                    {s.id.startsWith("local-") ? " · pending sync" : ""}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                      Edit set {s.set_number}
+                      {s.id.startsWith("local-") ? " · pending sync" : ""}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setEditBodyweight((b) => !b)}
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        editBodyweight
+                          ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                          : "bg-[var(--chip)] text-[var(--chip-ink)]"
+                      }`}
+                    >
+                      Bodyweight
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="text-xs text-[var(--muted)]">
-                      {unitLabel(unit)}
-                      <input
-                        inputMode="decimal"
-                        value={editWeight}
-                        onChange={(e) =>
-                          setEditWeight(
-                            e.target.value === "" ? "" : Number(e.target.value)
-                          )
-                        }
-                        className="mt-1 min-h-11 w-full rounded-lg bg-[var(--input)] px-2 text-base font-bold ring-1 ring-[var(--stroke)]"
-                      />
-                    </label>
-                    <label className="text-xs text-[var(--muted)]">
+                    {!editBodyweight && (
+                      <label className="text-xs text-[var(--muted)]">
+                        {unitLabel(unit)}
+                        <input
+                          inputMode="decimal"
+                          value={editWeight}
+                          onChange={(e) => {
+                            if (isPartialDecimal(e.target.value)) {
+                              setEditWeight(e.target.value);
+                            }
+                          }}
+                          className="mt-1 min-h-11 w-full rounded-lg bg-[var(--input)] px-2 text-base font-bold ring-1 ring-[var(--stroke)]"
+                        />
+                      </label>
+                    )}
+                    <label
+                      className={`text-xs text-[var(--muted)] ${
+                        editBodyweight ? "col-span-2" : ""
+                      }`}
+                    >
                       Reps
                       <input
                         inputMode="numeric"
@@ -476,7 +534,8 @@ export function ExerciseCard({
                     {s.id.startsWith("local-") ? " · queued" : ""}
                   </span>
                   <span className="font-semibold tabular-nums">
-                    {formatWeight(s.weight, unit)} × {s.reps}
+                    {s.weight == null ? "Bodyweight" : formatWeight(s.weight, unit)}{" "}
+                    × {s.reps}
                     {s.notes ? (
                       <span className="ml-2 font-normal text-[var(--muted)]">
                         · {s.notes}
@@ -508,50 +567,80 @@ export function ExerciseCard({
             <p className="text-sm font-semibold text-[var(--ink)]">
               {targetDone ? `Extra set ${nextSet}` : `Log set ${nextSet}`}
             </p>
-            <button
-              type="button"
-              onClick={() => void fetchSuggestion()}
-              disabled={suggesting}
-              className="text-sm font-semibold text-[var(--accent-text)] underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              {suggesting ? "Suggesting…" : "Suggest weight"}
-            </button>
+            {!bodyweight && (
+              <button
+                type="button"
+                onClick={() => void fetchSuggestion()}
+                disabled={suggesting}
+                className="text-sm font-semibold text-[var(--accent-text)] underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                {suggesting ? "Suggesting…" : "Suggest weight"}
+              </button>
+            )}
           </div>
 
-          {rationale && (
+          {!bodyweight && rationale && (
             <p className="rounded-xl bg-[var(--card)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
               {rationale}
             </p>
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-              Weight ({unitLabel(unit)})
-            </label>
-            <div className="flex items-center gap-2">
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+                Weight ({unitLabel(unit)})
+              </label>
               <button
                 type="button"
-                onClick={() => bumpWeight(-weightStep(unit))}
-                className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
+                onClick={() => {
+                  // Clear any previously-fetched AI suggestion when toggling
+                  // — otherwise a set saved as bodyweight can still carry a
+                  // stale numeric ai_suggested_weight from before the toggle.
+                  setBodyweight((b) => !b);
+                  setAiSuggested(null);
+                  setRationale(null);
+                }}
+                className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                  bodyweight
+                    ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                    : "bg-[var(--chip)] text-[var(--chip-ink)]"
+                }`}
               >
-                −
-              </button>
-              <input
-                inputMode="decimal"
-                value={weight}
-                onChange={(e) =>
-                  setWeight(e.target.value === "" ? "" : Number(e.target.value))
-                }
-                className="min-h-14 w-full rounded-xl bg-[var(--input)] text-center text-2xl font-bold tabular-nums text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              />
-              <button
-                type="button"
-                onClick={() => bumpWeight(weightStep(unit))}
-                className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
-              >
-                +
+                Bodyweight
               </button>
             </div>
+            {bodyweight ? (
+              <p className="flex min-h-14 items-center rounded-xl bg-[var(--input)] px-3 text-sm text-[var(--muted)] ring-1 ring-[var(--stroke)]">
+                No added weight for this set.
+              </p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => bumpWeight(-weightStep(unit))}
+                  className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
+                >
+                  −
+                </button>
+                <input
+                  inputMode="decimal"
+                  value={weight}
+                  onChange={(e) => {
+                    if (isPartialDecimal(e.target.value)) {
+                      setWeight(e.target.value);
+                    }
+                  }}
+                  className="min-h-14 w-full rounded-xl bg-[var(--input)] text-center text-2xl font-bold tabular-nums text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => bumpWeight(weightStep(unit))}
+                  className="min-h-14 min-w-14 rounded-xl bg-[var(--input)] text-2xl font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] active:scale-95"
+                >
+                  +
+                </button>
+              </div>
+            )}
           </div>
 
           <div>

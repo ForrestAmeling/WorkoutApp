@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { loadQueue, saveQueue, type QueuedSet } from "@/lib/offline-queue";
+import { SET_SYNCED_EVENT, type SetSyncedDetail } from "@/lib/set-sync-events";
+import type { SetLog } from "@/lib/types";
 
 async function flushQueue() {
   const items = loadQueue();
@@ -48,11 +50,29 @@ async function flushQueue() {
         sessionId = created.id;
       }
 
-      const { error: insertError } = await supabase.from("set_logs").insert({
-        session_id: sessionId,
-        ...item.log,
-      });
-      if (insertError) remaining.push(item);
+      const { data: inserted, error: insertError } = await supabase
+        .from("set_logs")
+        .insert({
+          session_id: sessionId,
+          ...item.log,
+        })
+        .select("*")
+        .single();
+      if (insertError || !inserted) {
+        remaining.push(item);
+        continue;
+      }
+
+      // Let any mounted ExerciseCard swap this set's temporary "local-…" id
+      // for the real row now that it's actually persisted — otherwise the
+      // edit/delete guard on "local-…" ids never clears until a reload.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent<SetSyncedDetail>(SET_SYNCED_EVENT, {
+            detail: { localId: item.id, row: inserted as SetLog },
+          })
+        );
+      }
     } catch {
       remaining.push(item);
     }

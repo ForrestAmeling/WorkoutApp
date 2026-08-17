@@ -4,10 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   defaultTargetsForFocus,
+  fociForMode,
   PERIODIZATION_OPTIONS,
+  type FocusTarget,
   type PeriodizationMode,
 } from "@/lib/periodization";
-import type { LibraryExercise, RoutineDayInput } from "@/lib/types";
+import type { LibraryExercise, RoutineDayInput, WeekFocus } from "@/lib/types";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
 import { libraryToExercisePatch } from "@/lib/exercise-library";
@@ -114,13 +116,25 @@ export function NewRoutineForm() {
 
   function addLibExercise(lib: LibraryExercise) {
     setPickerOpen(false);
-    const defaults = defaultTargetsForFocus(
+    // Build a target map with EACH focus's own defaults (not just one flat
+    // set derived from a single focus) — otherwise every focus falls back
+    // to whichever one was used here, and createRoutineFromDays ends up
+    // writing identical exercise_targets rows for Light/Middle/Heavy.
+    const foci = fociForMode(periodizationMode);
+    const targets: Partial<Record<WeekFocus, FocusTarget>> = {};
+    for (const focus of foci) {
+      targets[focus] = defaultTargetsForFocus(focus);
+    }
+    // Flat target_sets/rep_low/rep_high are only used for this screen's
+    // preview list — pick whichever focus the mode is pinned to, or Middle
+    // as the representative value for the full Light→Middle→Heavy cycle.
+    const primaryFocus: WeekFocus =
       periodizationMode === "light" ||
-        periodizationMode === "heavy" ||
-        periodizationMode === "middle"
+      periodizationMode === "heavy" ||
+      periodizationMode === "middle"
         ? periodizationMode
-        : "middle"
-    );
+        : "middle";
+    const primary = targets[primaryFocus] ?? defaultTargetsForFocus(primaryFocus);
     setDays((prev) =>
       prev.map((d, i) =>
         i !== activeDay
@@ -134,9 +148,10 @@ export function NewRoutineForm() {
                   library_id: lib.id,
                   image_url: lib.imageUrl,
                   muscle_group: lib.primaryMuscles[0] ?? null,
-                  target_sets: defaults.target_sets,
-                  rep_low: defaults.rep_low,
-                  rep_high: defaults.rep_high,
+                  target_sets: primary.target_sets,
+                  rep_low: primary.rep_low,
+                  rep_high: primary.rep_high,
+                  targets,
                 },
               ],
             }

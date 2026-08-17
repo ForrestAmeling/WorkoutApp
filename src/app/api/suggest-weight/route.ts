@@ -58,6 +58,21 @@ export async function POST(request: Request) {
       .eq("library_id", lib);
     exerciseIds = (siblings ?? []).map((r) => r.id as string);
     if (!exerciseIds.includes(exerciseId)) exerciseIds.push(exerciseId);
+  } else if (exercise?.name) {
+    // No library link — true for every seeded/template exercise (and any
+    // exercise added without picking from the library), including every
+    // exercise in the default 5-day program. Without this fallback, an
+    // exercise that repeats on a later day gets its own fresh `exercises`
+    // row with library_id still null, so it never sees history logged
+    // under yesterday's row for "the same" exercise. Fall back to matching
+    // by name — the same fallback progress.ts's exerciseKey() already uses
+    // to stitch history together when library_id is absent.
+    const { data: siblings } = await supabase
+      .from("exercises")
+      .select("id")
+      .ilike("name", exercise.name.trim());
+    exerciseIds = (siblings ?? []).map((r) => r.id as string);
+    if (!exerciseIds.includes(exerciseId)) exerciseIds.push(exerciseId);
   }
 
   const { data: rows } = await supabase

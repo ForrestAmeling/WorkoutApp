@@ -78,7 +78,7 @@ export async function resolveDefaultDay(
   // Only advance from sessions that actually have logged sets
   const { data: last } = await supabase
     .from("sessions")
-    .select("week_focus, day_number, set_logs!inner(id)")
+    .select("week_focus, day_number, performed_on, set_logs!inner(id)")
     .eq("user_id", userId)
     .eq("routine_id", routine.id)
     .order("performed_on", { ascending: false })
@@ -92,6 +92,20 @@ export async function resolveDefaultDay(
     return {
       weekFocus: defaultWeekFocus(mode),
       dayNumber: 1,
+      wrappedCycle: false,
+    };
+  }
+
+  // The most recently-logged session is today's own (still in progress) —
+  // resume it instead of advancing to the next day/focus. Without this,
+  // logging even a single set today makes the bare "Today" link (e.g. the
+  // bottom-nav tab, clicked from History) jump straight to tomorrow.
+  if (last.performed_on === todayISO()) {
+    return {
+      weekFocus: showsWeekPicker(mode)
+        ? (last.week_focus as WeekFocus)
+        : defaultWeekFocus(mode),
+      dayNumber: Math.min(last.day_number, maxDay),
       wrappedCycle: false,
     };
   }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { WeightText } from "@/components/WeightText";
+import { HistorySetRow } from "@/components/HistorySetRow";
 import { requireBillingPage } from "@/lib/require-billing";
 import { billingNotice } from "@/lib/subscription-access";
 import { formatHumanDate, WEEK_LABELS } from "@/lib/program";
@@ -80,27 +80,7 @@ export default async function SessionDetailPage({ params }: Props) {
             </h2>
             <ul className="mt-2 space-y-1">
               {rows.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex justify-between text-sm text-[var(--ink)]"
-                >
-                  <span className="text-[var(--muted)]">
-                    Set {r.set_number}
-                  </span>
-                    <span className="tabular-nums font-semibold">
-                      <WeightText lb={r.weight} /> × {r.reps}
-                      {r.ai_suggested_weight != null && (
-                        <span className="ml-2 font-normal text-[var(--muted)]">
-                          (AI <WeightText lb={r.ai_suggested_weight} />)
-                        </span>
-                      )}
-                    {r.notes ? (
-                      <span className="ml-2 font-normal text-[var(--muted)]">
-                        · {r.notes}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
+                <HistorySetRow key={r.id} row={r} />
               ))}
             </ul>
           </section>

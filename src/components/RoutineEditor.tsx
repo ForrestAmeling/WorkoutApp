@@ -121,19 +121,29 @@ export function RoutineEditor({
     // Renumber locally + in DB
     setDays(next);
     setActiveDayId(next[0]?.id ?? "");
+    // Track failures instead of assuming every renumber update landed —
+    // a partial failure here would otherwise silently leave the DB's
+    // day_number/sort_order out of sync with what's shown locally.
+    let renumberFailed = false;
     for (let i = 0; i < next.length; i++) {
-      await supabase
+      const { error: dayError } = await supabase
         .from("routine_days")
         .update({ day_number: i + 1, sort_order: i + 1, name: next[i].name })
         .eq("id", next[i].id);
-      await supabase
+      const { error: exError } = await supabase
         .from("exercises")
         .update({ day_number: i + 1 })
         .eq("routine_day_id", next[i].id);
+      if (dayError || exError) renumberFailed = true;
     }
     setDays((prev) =>
       prev.map((d, i) => ({ ...d, day_number: i + 1, sort_order: i + 1 }))
     );
+    if (renumberFailed) {
+      setMessage(
+        "Day removed, but renumbering the rest failed partway — reload to make sure day order is right."
+      );
+    }
     router.refresh();
   }
 
@@ -251,11 +261,11 @@ export function RoutineEditor({
     list[idx] = b;
     list[next] = a;
     const supabase = createClient();
-    await supabase
+    const { error: aError } = await supabase
       .from("exercises")
       .update({ sort_order: next + 1 })
       .eq("id", a.id);
-    await supabase
+    const { error: bError } = await supabase
       .from("exercises")
       .update({ sort_order: idx + 1 })
       .eq("id", b.id);
@@ -269,6 +279,14 @@ export function RoutineEditor({
           : d
       )
     );
+    // The reorder was already applied optimistically above — but if either
+    // update failed, the DB's sort_order no longer matches what's shown, so
+    // say so instead of leaving it silently wrong.
+    if (aError || bError) {
+      setMessage(
+        "Reorder failed to fully save — reload to make sure exercise order is right."
+      );
+    }
   }
 
   async function updateTarget(

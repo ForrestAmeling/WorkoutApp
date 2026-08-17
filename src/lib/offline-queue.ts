@@ -14,7 +14,7 @@ export type QueuedSet = {
   log: {
     exercise_id: string;
     set_number: number;
-    weight: number;
+    weight: number | null;
     reps: number;
     ai_suggested_weight: number | null;
     notes: string | null;
@@ -64,6 +64,13 @@ export function queuedToSetLog(item: QueuedSet, exerciseId: string): SetLog {
 
 export function isNetworkError(err: unknown) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  // fetch() is spec-guaranteed to reject with a TypeError on any network
+  // failure, regardless of the browser-specific message text (Chrome says
+  // "Failed to fetch", Firefox "NetworkError when attempting to fetch
+  // resource", Safari/WebKit just "Load failed" — which matched none of the
+  // substrings below, so on iOS a normal connectivity blip was misclassified
+  // as a non-network error and the set was dropped instead of queued).
+  if (err instanceof TypeError) return true;
   const msg = err instanceof Error ? err.message : String(err ?? "");
-  return /failed to fetch|network|offline|fetch/i.test(msg);
+  return /failed to fetch|network|offline|fetch|load failed/i.test(msg);
 }
