@@ -87,6 +87,7 @@ export default async function TodayPage({ searchParams }: Props) {
           weekFocus={weekFocus}
           dayNumber={dayNumber}
           usesPeriodization={showsWeekPicker(mode)}
+          periodizationMode={mode}
           sessionId={session?.id ?? null}
           cycleId={cycle?.id ?? null}
           routineId={routine.id}

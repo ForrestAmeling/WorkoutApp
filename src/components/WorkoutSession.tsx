@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DateStrip } from "@/components/DateStrip";
 import { DayPicker } from "@/components/DayPicker";
 import { ExerciseCard } from "@/components/ExerciseCard";
 import { RestTimer } from "@/components/RestTimer";
 import { useSettings } from "@/components/SettingsProvider";
 import { formatWeight } from "@/lib/units";
-import { todayISO } from "@/lib/program";
+import { nextPosition, todayISO, WEEK_LABELS } from "@/lib/program";
+import type { PeriodizationMode } from "@/lib/periodization";
 import type {
   ExerciseWithTarget,
   RoutineDay,
@@ -24,6 +26,7 @@ export function WorkoutSession({
   weekFocus,
   dayNumber,
   usesPeriodization,
+  periodizationMode,
   sessionId,
   cycleId,
   routineId,
@@ -36,12 +39,14 @@ export function WorkoutSession({
   weekFocus: WeekFocus;
   dayNumber: number;
   usesPeriodization: boolean;
+  periodizationMode: PeriodizationMode;
   sessionId: string | null;
   cycleId: string | null;
   routineId: string;
   performedOn: string;
   initialExercises: ExerciseWithTarget[];
 }) {
+  const router = useRouter();
   const { settings } = useSettings();
   const [exercises, setExercises] = useState(initialExercises);
   const [openId, setOpenId] = useState<string | null>(
@@ -101,6 +106,23 @@ export function WorkoutSession({
     0
   );
 
+  // Is this the last day of the current block (e.g. day 5 of a 5-day
+  // Light/Middle/Heavy focus)? If so, "done" means the whole block is done,
+  // not just today — that's when we offer to jump straight into what's next
+  // instead of the usual plain "Workout complete".
+  const maxDay = days.length || 1;
+  const isLastDayOfBlock = dayNumber >= maxDay;
+  const showFocusLabel = periodizationMode !== "none";
+  const nextStop = isLastDayOfBlock
+    ? periodizationMode === "full"
+      ? nextPosition(weekFocus, dayNumber, maxDay)
+      : { weekFocus, dayNumber: 1 }
+    : null;
+  const nextStopName = nextStop
+    ? days.find((d) => d.day_number === nextStop.dayNumber)?.name ??
+      `Day ${nextStop.dayNumber}`
+    : null;
+
   const onSetsChange = useCallback((exerciseId: string, sets: SetLog[]) => {
     setExercises((prev) =>
       prev.map((e) => (e.id === exerciseId ? { ...e, sets } : e))
@@ -147,19 +169,48 @@ export function WorkoutSession({
       {allTargetsMet && !dismissedComplete && (
         <section className="rounded-2xl bg-[var(--accent-soft)] px-4 py-4 ring-1 ring-[var(--accent)]">
           <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[var(--ink)]">
-            Workout complete
+            {isLastDayOfBlock
+              ? showFocusLabel
+                ? `${WEEK_LABELS[weekFocus]} block complete! 🎉`
+                : "Block complete! 🎉"
+              : "Workout complete"}
           </h2>
           <p className="mt-1 text-sm text-[var(--ink)]">
             {completedSets} sets · {formatWeight(volume, settings.unit)} volume.
-            Extra sets still count if you want them.
+            {isLastDayOfBlock
+              ? ` That's all ${maxDay} day${maxDay === 1 ? "" : "s"}${
+                  showFocusLabel ? ` of ${WEEK_LABELS[weekFocus]}` : ""
+                } done.`
+              : " Extra sets still count if you want them."}
           </p>
-          <button
-            type="button"
-            onClick={() => setDismissedComplete(true)}
-            className="mt-3 text-sm font-semibold text-[var(--accent-text)]"
-          >
-            Dismiss
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {isLastDayOfBlock && nextStop && (
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    periodizationMode === "full"
+                      ? `/today?week=${nextStop.weekFocus}&day=${nextStop.dayNumber}`
+                      : `/today?day=${nextStop.dayNumber}`
+                  )
+                }
+                className="min-h-11 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-ink)]"
+              >
+                Reset — Start{" "}
+                {periodizationMode === "full"
+                  ? `${WEEK_LABELS[nextStop.weekFocus]} · `
+                  : ""}
+                {nextStopName}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setDismissedComplete(true)}
+              className="text-sm font-semibold text-[var(--accent-text)]"
+            >
+              Dismiss
+            </button>
+          </div>
         </section>
       )}
 
