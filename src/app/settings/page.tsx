@@ -10,15 +10,14 @@ import {
 } from "@/lib/subscription";
 import { billingNotice } from "@/lib/subscription-access";
 import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUser } from "@/lib/supabase/verified-user";
 import type { Subscription } from "@/lib/types";
 
 export default async function SettingsPage({
   searchParams,
 }: PageProps<"/settings">) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getVerifiedUser(supabase);
   if (!user) redirect("/login");
 
   try {

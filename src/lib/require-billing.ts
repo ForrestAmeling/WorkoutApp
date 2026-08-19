@@ -3,13 +3,12 @@ import { NextResponse } from "next/server";
 import { hasSubscriptionAccess } from "@/lib/subscription-access";
 import { ensureTrialSubscription } from "@/lib/subscription";
 import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUser } from "@/lib/supabase/verified-user";
 import type { Subscription } from "@/lib/types";
 
 export async function requireBillingPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getVerifiedUser(supabase);
   if (!user) redirect("/login");
 
   let subscription: Subscription | null = null;

@@ -1,5 +1,6 @@
 import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUser } from "@/lib/supabase/verified-user";
 import { copyRoutine } from "@/lib/routines";
 import { NextResponse } from "next/server";
 
@@ -8,9 +9,7 @@ type Props = { params: Promise<{ id: string }> };
 export async function POST(_request: Request, { params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getVerifiedUser(supabase);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

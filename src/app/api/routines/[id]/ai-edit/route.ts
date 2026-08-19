@@ -10,6 +10,7 @@ import {
 } from "@/lib/periodization";
 import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
+import { getVerifiedUser } from "@/lib/supabase/verified-user";
 import {
   loadRoutineEditor,
   replaceRoutineContent,
@@ -49,9 +50,7 @@ function formatTargets(ex: EditorDay["exercises"][number]) {
 export async function POST(request: Request, { params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getVerifiedUser(supabase);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
