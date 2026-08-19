@@ -141,8 +141,35 @@ export function uniqueEquipment(list: LibraryExercise[]) {
 export function libraryToExercisePatch(lib: LibraryExercise) {
   return {
     name: lib.name,
-    library_id: lib.id,
+    // A user-typed custom exercise (see ExercisePicker/ExerciseHowTo "add
+    // your own") is represented as a LibraryExercise with an empty id — it
+    // isn't backed by a free-exercise-db row, so it must not be stored as
+    // one. `library_id: null` is already a supported value end-to-end (the
+    // seeded/cloned routine exercises use it too).
+    library_id: lib.id || null,
     image_url: lib.imageUrl,
     muscle_group: lib.primaryMuscles[0] ?? null,
+  };
+}
+
+/** Builds a LibraryExercise-shaped stand-in for a user-typed custom
+ * exercise, so it can flow through the same onPick/onSwitch callbacks as a
+ * real free-exercise-db pick. `id: ""` is the signal `libraryToExercisePatch`
+ * and the insert paths in RoutineEditor/NewRoutineForm use to store
+ * `library_id: null` instead of an id. */
+export function customLibraryExercise(name: string): LibraryExercise {
+  return {
+    id: "",
+    name,
+    equipment: null,
+    level: null,
+    mechanic: null,
+    force: null,
+    primaryMuscles: [],
+    secondaryMuscles: [],
+    instructions: [],
+    category: null,
+    images: [],
+    imageUrl: null,
   };
 }

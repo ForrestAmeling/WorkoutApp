@@ -123,23 +123,40 @@ export function WorkoutSession({
       `Day ${nextStop.dayNumber}`
     : null;
 
-  const onSetsChange = useCallback((exerciseId: string, sets: SetLog[]) => {
-    setExercises((prev) =>
-      prev.map((e) => (e.id === exerciseId ? { ...e, sets } : e))
-    );
-  }, []);
+  // Auto-advance to the next incomplete exercise, but only at the moment the
+  // exercise the user is actively logging just hits its set target — not as
+  // a standing rule re-applied on every render. Doing it here (inside the
+  // update triggered by an actual logged/edited/deleted set) instead of a
+  // useEffect keyed on [exercises, openId] means manually reopening an
+  // already-completed exercise (tapping its header) doesn't get immediately
+  // reverted: that reopen only changes openId, it doesn't call onSetsChange,
+  // so this logic simply doesn't run and the user's choice sticks — letting
+  // them add an extra set to *any* finished exercise, not just whichever one
+  // happened to still be open when the last target was hit.
+  const onSetsChange = useCallback(
+    (exerciseId: string, sets: SetLog[]) => {
+      setExercises((prev) => {
+        const next = prev.map((e) => (e.id === exerciseId ? { ...e, sets } : e));
+        const changed = next.find((e) => e.id === exerciseId);
+        if (
+          openId === exerciseId &&
+          changed &&
+          changed.sets.length >= changed.target.target_sets
+        ) {
+          const nextIncomplete = next.find(
+            (e) => e.sets.length < e.target.target_sets
+          );
+          if (nextIncomplete) setOpenId(nextIncomplete.id);
+        }
+        return next;
+      });
+    },
+    [openId]
+  );
 
   const onLogged = useCallback(() => {
     setRestEndsAt(Date.now() + settings.restSeconds * 1000);
   }, [settings.restSeconds]);
-
-  useEffect(() => {
-    if (!openId) return;
-    const current = exercises.find((e) => e.id === openId);
-    if (!current || current.sets.length < current.target.target_sets) return;
-    const next = exercises.find((e) => e.sets.length < e.target.target_sets);
-    if (next) setOpenId(next.id);
-  }, [exercises, openId]);
 
   return (
     <div className="space-y-5">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
+import { customLibraryExercise } from "@/lib/exercise-library";
 import type { LibraryExercise } from "@/lib/types";
 
 export function ExercisePicker({
@@ -110,6 +111,17 @@ export function ExercisePicker({
         </div>
 
         <ul className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+          {q.trim() && (
+            <li className="rounded-2xl bg-[var(--card)] px-3 py-2 ring-1 ring-[var(--stroke)]">
+              <button
+                type="button"
+                onClick={() => onPick(customLibraryExercise(q.trim()))}
+                className="w-full text-left text-sm font-semibold text-[var(--accent-text)]"
+              >
+                + Add “{q.trim()}” as your own exercise
+              </button>
+            </li>
+          )}
           {loading && (
             <li className="px-2 py-4 text-sm text-[var(--muted)]">Searching…</li>
           )}

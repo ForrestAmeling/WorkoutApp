@@ -163,7 +163,7 @@ export function RoutineEditor({
         sort_order: sort,
         routine_id: routine.id,
         routine_day_id: activeDay.id,
-        library_id: lib.id,
+        library_id: lib.id || null,
         image_url: lib.imageUrl,
         is_template: false,
       })
@@ -520,12 +520,12 @@ export function RoutineEditor({
                       return (
                         <div
                           key={focus}
-                          className="grid grid-cols-[4.5rem_1fr_1fr_1fr] items-center gap-2 text-xs"
+                          className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 text-xs"
                         >
-                          <span className="font-semibold capitalize text-[var(--muted)]">
+                          <span className="truncate font-semibold capitalize text-[var(--muted)]">
                             {periodizationMode === "none" ? "Target" : focus}
                           </span>
-                          <label className="flex flex-col gap-0.5">
+                          <label className="flex min-w-0 flex-col gap-0.5">
                             Sets
                             <input
                               type="number"
@@ -537,10 +537,10 @@ export function RoutineEditor({
                                   target_sets: Number(e.target.value),
                                 })
                               }
-                              className="min-h-9 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
+                              className="min-h-9 w-full min-w-0 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
                             />
                           </label>
-                          <label className="flex flex-col gap-0.5">
+                          <label className="flex min-w-0 flex-col gap-0.5">
                             Rep low
                             <input
                               type="number"
@@ -551,10 +551,10 @@ export function RoutineEditor({
                                   rep_low: Number(e.target.value),
                                 })
                               }
-                              className="min-h-9 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
+                              className="min-h-9 w-full min-w-0 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
                             />
                           </label>
-                          <label className="flex flex-col gap-0.5">
+                          <label className="flex min-w-0 flex-col gap-0.5">
                             Rep high
                             <input
                               type="number"
@@ -565,7 +565,7 @@ export function RoutineEditor({
                                   rep_high: Number(e.target.value),
                                 })
                               }
-                              className="min-h-9 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
+                              className="min-h-9 w-full min-w-0 rounded-lg bg-[var(--input)] px-2 ring-1 ring-[var(--stroke)]"
                             />
                           </label>
                         </div>

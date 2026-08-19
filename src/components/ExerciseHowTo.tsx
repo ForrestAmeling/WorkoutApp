@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { customLibraryExercise } from "@/lib/exercise-library";
 import type { LibraryExercise } from "@/lib/types";
 
 export function ExerciseHowToButton({
@@ -265,6 +266,18 @@ function ExerciseHowToSheet({
                 autoFocus
                 className="min-h-12 w-full rounded-xl bg-[var(--input)] px-3 text-base text-[var(--ink)] ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
+              {onSwitch && searchQ.trim() ? (
+                <button
+                  type="button"
+                  disabled={switching}
+                  onClick={() => void switchToGuide(customLibraryExercise(searchQ.trim()))}
+                  className="w-full rounded-xl bg-[var(--card)] px-3 py-2 text-left text-sm font-semibold text-[var(--accent-text)] ring-1 ring-[var(--stroke)] disabled:opacity-60"
+                >
+                  {switching
+                    ? "Switching…"
+                    : `+ Use “${searchQ.trim()}” as your own exercise`}
+                </button>
+              ) : null}
               <ul className="space-y-2">
                 {searching ? (
                   <li className="text-sm text-[var(--muted)]">Searching…</li>

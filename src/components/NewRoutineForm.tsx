@@ -145,7 +145,7 @@ export function NewRoutineForm() {
                 ...d.exercises,
                 {
                   name: lib.name,
-                  library_id: lib.id,
+                  library_id: lib.id || null,
                   image_url: lib.imageUrl,
                   muscle_group: lib.primaryMuscles[0] ?? null,
                   target_sets: primary.target_sets,
