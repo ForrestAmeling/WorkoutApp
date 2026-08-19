@@ -29,8 +29,21 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       })
-      .catch(() =>
-        caches.match(req).then((cached) => cached || caches.match("/today"))
-      )
+      .catch((err) => {
+        // A request the page itself cancelled (e.g. Next.js aborting a
+        // stale prefetch/navigation fetch when the user navigates again
+        // before the first one resolves — very routine, happens on every
+        // quick tab switch) rejects with AbortError. That must propagate
+        // as a normal cancellation, not get swallowed into a fake
+        // "successful" fallback response: since /today is the only route
+        // precached at install and exact RSC-fetch URLs almost never
+        // get a real cache hit (they carry unique per-request query
+        // params), any swallowed abort here fell through to
+        // caches.match("/today") — silently serving Today's page in
+        // place of whatever route (Routines, Progress, ...) was actually
+        // being navigated to.
+        if (err && err.name === "AbortError") throw err;
+        return caches.match(req).then((cached) => cached || caches.match("/today"));
+      })
   );
 });
