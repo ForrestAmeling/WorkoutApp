@@ -156,6 +156,36 @@ export async function findSession(
   return (data as Session) ?? null;
 }
 
+/** Find the most recent session logged for this exact (week focus, day
+ * number) slot within the given cycle, regardless of which calendar date
+ * it was actually performed on. Used when the day/week picker (not the
+ * date strip) is driving navigation: a day finished earlier in the same
+ * cycle should keep showing its completed sets instead of looking like a
+ * fresh, unstarted day just because "today" has moved on. */
+export async function findCycleSession(
+  supabase: SupabaseClient,
+  userId: string,
+  routineId: string,
+  cycleId: string | null,
+  weekFocus: WeekFocus,
+  dayNumber: number
+): Promise<Session | null> {
+  if (!cycleId) return null;
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("routine_id", routineId)
+    .eq("cycle_id", cycleId)
+    .eq("week_focus", weekFocus)
+    .eq("day_number", dayNumber)
+    .order("performed_on", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Session) ?? null;
+}
+
 /** Create session only when the first set is logged. */
 export async function ensureSession(
   supabase: SupabaseClient,

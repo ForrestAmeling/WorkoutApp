@@ -170,7 +170,11 @@ export function WorkoutSession({
         <p className="mt-1 text-sm text-[var(--muted)]">
           {completedSets}/{targetSets} sets · {formatWeight(volume, settings.unit)}{" "}
           volume
-          {performedOn !== todayISO() ? " · logging a past day" : ""}
+          {performedOn !== todayISO()
+            ? allTargetsMet
+              ? " · completed"
+              : " · logging a past day"
+            : ""}
         </p>
       </header>
 
@@ -207,8 +211,8 @@ export function WorkoutSession({
                 onClick={() =>
                   router.push(
                     periodizationMode === "full"
-                      ? `/today?week=${nextStop.weekFocus}&day=${nextStop.dayNumber}`
-                      : `/today?day=${nextStop.dayNumber}`
+                      ? `/today?week=${nextStop.weekFocus}&day=${nextStop.dayNumber}&reset=1`
+                      : `/today?day=${nextStop.dayNumber}&reset=1`
                   )
                 }
                 className="min-h-11 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-ink)]"
