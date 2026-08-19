@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { formatTarget } from "@/lib/program";
 import {
@@ -18,7 +19,7 @@ import {
   weightStep,
 } from "@/lib/units";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
-import { libraryToExercisePatch } from "@/lib/exercise-library";
+import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 import { SET_SYNCED_EVENT, type SetSyncedDetail } from "@/lib/set-sync-events";
 import type { ExerciseWithTarget, LibraryExercise, SetLog, WeekFocus } from "@/lib/types";
 
@@ -348,6 +349,13 @@ export function ExerciseCard({
     // set fail (see isNetworkError), one of these updates can fail while
     // the rest succeed, leaving the DB's set_number out of sync with what
     // we're about to show. Surface that instead of silently proceeding.
+    //
+    // Stays sequential, ascending order, deliberately: this compacts a
+    // range of set_number values down by one, where each step's new value
+    // is the previous set's old value. Running these concurrently could
+    // transiently assign two sets the same set_number before the other
+    // update commits — sequential ascending order guarantees each step
+    // frees the value the next one needs before it's requested.
     let renumberFailed = false;
     for (const s of remaining) {
       if (s.id.startsWith("local-")) continue;
@@ -399,10 +407,11 @@ export function ExerciseCard({
           onClick={() => onOpenChange(!open)}
           className="flex min-w-0 flex-1 items-start gap-3 text-left"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={exercise.image_url ?? "/icon-192.png"}
+          <Image
+            src={safeExerciseImageUrl(exercise.image_url)}
             alt=""
+            width={48}
+            height={48}
             className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
           />
           <div className="min-w-0">

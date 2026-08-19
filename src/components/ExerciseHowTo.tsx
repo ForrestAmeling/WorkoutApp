@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { customLibraryExercise } from "@/lib/exercise-library";
+import Image from "next/image";
+import { customLibraryExercise, safeExerciseImageUrl } from "@/lib/exercise-library";
 import type { LibraryExercise } from "@/lib/types";
 
 export function ExerciseHowToButton({
@@ -198,12 +199,15 @@ function ExerciseHowToSheet({
                 >
                   {images.map((src, i) => (
                     <figure key={src} className="min-w-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt={`${guide.name} position ${i + 1}`}
-                        className="aspect-square w-full rounded-2xl bg-[var(--canvas)] object-cover ring-1 ring-[var(--stroke)]"
-                      />
+                      <div className="relative aspect-square w-full">
+                        <Image
+                          src={safeExerciseImageUrl(src)}
+                          alt={`${guide.name} position ${i + 1}`}
+                          fill
+                          sizes="(max-width: 640px) 50vw, 300px"
+                          className="rounded-2xl bg-[var(--canvas)] object-cover ring-1 ring-[var(--stroke)]"
+                        />
+                      </div>
                       <figcaption className="mt-1 text-center text-xs font-semibold text-[var(--muted)]">
                         {images.length === 2
                           ? i === 0
@@ -295,10 +299,11 @@ function ExerciseHowToSheet({
                           }}
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={ex.imageUrl ?? "/icon-192.png"}
+                          <Image
+                            src={safeExerciseImageUrl(ex.imageUrl)}
                             alt=""
+                            width={48}
+                            height={48}
                             className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
                           />
                           <div className="min-w-0">

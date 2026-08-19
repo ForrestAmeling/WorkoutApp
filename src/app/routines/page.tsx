@@ -3,13 +3,12 @@ import { AppShell } from "@/components/AppShell";
 import { RoutineList } from "@/components/RoutineList";
 import { requireBillingPage } from "@/lib/require-billing";
 import { billingNotice } from "@/lib/subscription-access";
-import { ensureUserRoutines, listRoutines } from "@/lib/routines";
+import { ensureUserRoutines } from "@/lib/routines";
 
 export default async function RoutinesPage() {
   const { user, supabase, subscription } = await requireBillingPage();
 
-  await ensureUserRoutines(supabase, user.id);
-  const routines = await listRoutines(supabase, user.id);
+  const { routines } = await ensureUserRoutines(supabase, user.id);
 
   return (
     <AppShell

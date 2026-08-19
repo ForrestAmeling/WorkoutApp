@@ -328,7 +328,7 @@ export async function loadActiveWorkoutContext(
   supabase: SupabaseClient,
   userId: string
 ): Promise<{ routine: Routine; days: RoutineDay[] }> {
-  const routine = await ensureUserRoutines(supabase, userId);
+  const { active: routine } = await ensureUserRoutines(supabase, userId);
   const days = await getRoutineDays(supabase, routine.id);
   return { routine, days };
 }

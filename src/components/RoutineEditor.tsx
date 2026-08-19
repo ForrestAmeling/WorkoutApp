@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
-import { libraryToExercisePatch } from "@/lib/exercise-library";
+import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 import {
   defaultTargetsForFocus,
   fociForMode,
@@ -121,9 +122,18 @@ export function RoutineEditor({
     // Renumber locally + in DB
     setDays(next);
     setActiveDayId(next[0]?.id ?? "");
-    // Track failures instead of assuming every renumber update landed —
-    // a partial failure here would otherwise silently leave the DB's
+    // Track failures instead of assuming every renumber update landed — a
+    // partial failure here would otherwise silently leave the DB's
     // day_number/sort_order out of sync with what's shown locally.
+    //
+    // This stays a sequential, ascending-order loop deliberately: it's
+    // compacting a range of values down by one (e.g. 2,3,4 -> 1,2,3), and
+    // each step's new value is the *previous* row's old value. Running
+    // these concurrently could transiently assign two rows the same
+    // day_number/sort_order before the other update commits — sequential
+    // ascending order guarantees each step frees the value the next one
+    // needs before it's requested. (Unlike a plain pairwise swap — see
+    // moveExercise — this isn't safe to parallelize.)
     let renumberFailed = false;
     for (let i = 0; i < next.length; i++) {
       const { error: dayError } = await supabase
@@ -260,28 +270,27 @@ export function RoutineEditor({
     const b = list[next];
     list[idx] = b;
     list[next] = a;
-    const supabase = createClient();
-    const { error: aError } = await supabase
-      .from("exercises")
-      .update({ sort_order: next + 1 })
-      .eq("id", a.id);
-    const { error: bError } = await supabase
-      .from("exercises")
-      .update({ sort_order: idx + 1 })
-      .eq("id", b.id);
+    const reordered = list.map((e, i) => ({ ...e, sort_order: i + 1 }));
+    // Apply the reorder to state immediately — this is what actually makes
+    // it optimistic. Previously setDays ran after both Supabase calls
+    // resolved, so nothing moved on screen until two round trips finished,
+    // despite a comment here claiming otherwise.
     setDays((prev) =>
       prev.map((d) =>
-        d.id === activeDay.id
-          ? {
-              ...d,
-              exercises: list.map((e, i) => ({ ...e, sort_order: i + 1 })),
-            }
-          : d
+        d.id === activeDay.id ? { ...d, exercises: reordered } : d
       )
     );
-    // The reorder was already applied optimistically above — but if either
-    // update failed, the DB's sort_order no longer matches what's shown, so
-    // say so instead of leaving it silently wrong.
+    const supabase = createClient();
+    const [{ error: aError }, { error: bError }] = await Promise.all([
+      supabase
+        .from("exercises")
+        .update({ sort_order: next + 1 })
+        .eq("id", a.id),
+      supabase
+        .from("exercises")
+        .update({ sort_order: idx + 1 })
+        .eq("id", b.id),
+    ]);
     if (aError || bError) {
       setMessage(
         "Reorder failed to fully save — reload to make sure exercise order is right."
@@ -289,30 +298,55 @@ export function RoutineEditor({
     }
   }
 
-  async function updateTarget(
+  // Keyed by exercise_targets row id. targetTimers holds the pending
+  // debounce timer; pendingTargetWrites holds the latest value to write
+  // when that timer fires — a ref, not React state, so the setTimeout
+  // callback always sees the most recent edit instead of whatever was
+  // typed when the timer was first scheduled.
+  const targetTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const pendingTargetWrites = useRef(
+    new Map<string, { target_sets: number; rep_low: number; rep_high: number }>()
+  );
+
+  // If an edit is still debouncing when the user leaves — navigating
+  // in-app (unmount) or closing/refreshing the tab (pagehide) — don't just
+  // cancel it, that would silently drop an edit already echoed on screen
+  // as saved. Flush every still-pending write immediately instead of
+  // waiting out its remaining delay. (pagehide fires more reliably than
+  // beforeunload for this; the fetch it kicks off isn't guaranteed to
+  // finish on a hard close, but it's strictly better than never trying.)
+  useEffect(() => {
+    function flushPendingTargetWrites() {
+      for (const [key, timer] of targetTimers.current) {
+        clearTimeout(timer);
+        const pending = pendingTargetWrites.current.get(key);
+        if (pending) {
+          void createClient().from("exercise_targets").update(pending).eq("id", key);
+        }
+      }
+      targetTimers.current.clear();
+      pendingTargetWrites.current.clear();
+    }
+    window.addEventListener("pagehide", flushPendingTargetWrites);
+    return () => {
+      window.removeEventListener("pagehide", flushPendingTargetWrites);
+      flushPendingTargetWrites();
+    };
+  }, []);
+
+  function updateTarget(
     exerciseId: string,
     weekFocus: WeekFocus,
     patch: Partial<{ target_sets: number; rep_low: number; rep_high: number }>
   ) {
-    const supabase = createClient();
     const day = days.find((d) => d.exercises.some((e) => e.id === exerciseId));
     const ex = day?.exercises.find((e) => e.id === exerciseId);
     const current = ex?.targets.find((t) => t.week_focus === weekFocus);
     if (!current) return;
+    const nextValue = { ...current, ...patch };
 
-    const next = { ...current, ...patch };
-    const { error } = await supabase
-      .from("exercise_targets")
-      .update({
-        target_sets: next.target_sets,
-        rep_low: next.rep_low,
-        rep_high: next.rep_high,
-      })
-      .eq("id", current.id);
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
+    // Echo the typed value immediately so the field never waits on a
+    // network round trip to show what was just typed.
     setDays((prev) =>
       prev.map((d) => ({
         ...d,
@@ -327,6 +361,36 @@ export function RoutineEditor({
               }
         ),
       }))
+    );
+
+    // Debounce the actual write: a burst of edits (typing multiple
+    // digits, clicking the spinner repeatedly) should produce one
+    // Supabase call, not one per keystroke — and it should always send
+    // the latest values typed so far, not just this one keystroke's.
+    const key = current.id;
+    pendingTargetWrites.current.set(key, {
+      target_sets: nextValue.target_sets,
+      rep_low: nextValue.rep_low,
+      rep_high: nextValue.rep_high,
+    });
+    const existingTimer = targetTimers.current.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+    targetTimers.current.set(
+      key,
+      setTimeout(() => {
+        targetTimers.current.delete(key);
+        const pending = pendingTargetWrites.current.get(key);
+        pendingTargetWrites.current.delete(key);
+        if (!pending) return;
+        const supabase = createClient();
+        void supabase
+          .from("exercise_targets")
+          .update(pending)
+          .eq("id", key)
+          .then(({ error }) => {
+            if (error) setMessage(error.message);
+          });
+      }, 500)
     );
   }
 
@@ -469,10 +533,11 @@ export function RoutineEditor({
                   className="rounded-xl bg-[var(--canvas)]/70 p-3 ring-1 ring-[var(--stroke)]"
                 >
                   <div className="flex gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={ex.image_url ?? "/icon-192.png"}
+                    <Image
+                      src={safeExerciseImageUrl(ex.image_url)}
                       alt=""
+                      width={56}
+                      height={56}
                       className="h-14 w-14 rounded-lg object-cover bg-[var(--input)]"
                     />
                     <div className="min-w-0 flex-1">
@@ -533,7 +598,7 @@ export function RoutineEditor({
                               max={8}
                               value={t.target_sets}
                               onChange={(e) =>
-                                void updateTarget(ex.id, focus, {
+                                updateTarget(ex.id, focus, {
                                   target_sets: Number(e.target.value),
                                 })
                               }
@@ -547,7 +612,7 @@ export function RoutineEditor({
                               min={1}
                               value={t.rep_low}
                               onChange={(e) =>
-                                void updateTarget(ex.id, focus, {
+                                updateTarget(ex.id, focus, {
                                   rep_low: Number(e.target.value),
                                 })
                               }
@@ -561,7 +626,7 @@ export function RoutineEditor({
                               min={1}
                               value={t.rep_high}
                               onChange={(e) =>
-                                void updateTarget(ex.id, focus, {
+                                updateTarget(ex.id, focus, {
                                   rep_high: Number(e.target.value),
                                 })
                               }

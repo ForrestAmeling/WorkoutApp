@@ -5,7 +5,7 @@ import { requireBillingPage } from "@/lib/require-billing";
 import { modeLabel, showsWeekPicker } from "@/lib/periodization";
 import { isISODate, todayISO, WEEK_LABELS } from "@/lib/program";
 import { billingNotice } from "@/lib/subscription-access";
-import type { Session } from "@/lib/types";
+import type { Cycle, Session } from "@/lib/types";
 import {
   ensureCycle,
   findCycleSession,
@@ -56,7 +56,7 @@ export default async function TodayPage({ searchParams }: Props) {
   // same-day reset, since its "resume today's in-progress session"
   // short-circuit returns wrappedCycle: false regardless of whether
   // today's session was actually the block's last day.
-  const cycle = await ensureCycle(supabase, user.id, {
+  const cyclePromise = ensureCycle(supabase, user.id, {
     startNext: params.reset === "1" || defaults.wrappedCycle,
     startedOn: requestedOn,
   });
@@ -67,19 +67,26 @@ export default async function TodayPage({ searchParams }: Props) {
   // which date it actually happened on, so a day finished earlier this
   // cycle keeps showing its completed sets instead of looking freshly
   // unstarted just because "today" has moved on.
+  let cycle: Cycle;
   let session: Session | null;
   let performedOn: string;
   if (explicitDate) {
     performedOn = explicitDate;
-    session = await findSession(
-      supabase,
-      user.id,
-      routine.id,
-      weekFocus,
-      dayNumber,
-      performedOn
-    );
+    // findSession doesn't depend on the cycle at all in this branch —
+    // run both concurrently instead of waiting on one to start the other.
+    [cycle, session] = await Promise.all([
+      cyclePromise,
+      findSession(
+        supabase,
+        user.id,
+        routine.id,
+        weekFocus,
+        dayNumber,
+        performedOn
+      ),
+    ]);
   } else {
+    cycle = await cyclePromise;
     session = await findCycleSession(
       supabase,
       user.id,

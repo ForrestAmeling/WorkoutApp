@@ -30,6 +30,24 @@ export function libraryImageUrl(path: string | undefined | null) {
   return IMAGE_BASE + path.replace(/^\//, "");
 }
 
+/**
+ * next/image throws a hard render-time error ("hostname is not
+ * configured") for any src whose host isn't in next.config.ts's
+ * images.remotePatterns — unlike a plain <img>, which just shows a broken
+ * icon. exercise/library image URLs are meant to always be under
+ * IMAGE_BASE (the one host next.config.ts whitelists) or a local /public
+ * path, but a stray/legacy image_url stored on an exercises row wouldn't
+ * be caught by that until it crashed a page. Route every dynamic image src
+ * through this first so anything unexpected degrades to the default icon
+ * instead of crashing.
+ */
+export function safeExerciseImageUrl(url: string | null | undefined): string {
+  if (!url) return "/icon-192.png";
+  if (url.startsWith("/")) return url;
+  if (url.startsWith(IMAGE_BASE)) return url;
+  return "/icon-192.png";
+}
+
 function normalize(raw: RawExercise): LibraryExercise {
   const images = (raw.images ?? [])
     .map((path) => libraryImageUrl(path))

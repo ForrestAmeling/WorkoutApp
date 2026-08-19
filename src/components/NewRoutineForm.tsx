@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   defaultTargetsForFocus,
   fociForMode,
@@ -12,7 +13,7 @@ import {
 import type { LibraryExercise, RoutineDayInput, WeekFocus } from "@/lib/types";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
-import { libraryToExercisePatch } from "@/lib/exercise-library";
+import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 
 type Mode = "choose" | "manual" | "ai" | "review";
 
@@ -357,10 +358,11 @@ export function NewRoutineForm() {
                 key={`${ex.library_id ?? ex.name}-${idx}`}
                 className="flex items-center gap-3 rounded-xl bg-[var(--canvas)]/70 px-3 py-2"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={ex.image_url ?? "/icon-192.png"}
+                <Image
+                  src={safeExerciseImageUrl(ex.image_url)}
                   alt=""
+                  width={48}
+                  height={48}
                   className="h-12 w-12 rounded-lg object-cover"
                 />
                 <div className="min-w-0 flex-1">

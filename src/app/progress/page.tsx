@@ -7,7 +7,7 @@ import {
 } from "@/lib/progress";
 import { shiftISODate, todayISO } from "@/lib/program";
 import { requireBillingPage } from "@/lib/require-billing";
-import { ensureUserRoutines, getActiveRoutine, listRoutines } from "@/lib/routines";
+import { ensureUserRoutines } from "@/lib/routines";
 import { billingNotice } from "@/lib/subscription-access";
 
 type Props = {
@@ -17,9 +17,7 @@ type Props = {
 export default async function ProgressPage({ searchParams }: Props) {
   const { user, supabase, subscription } = await requireBillingPage();
 
-  await ensureUserRoutines(supabase, user.id);
-  const routines = await listRoutines(supabase, user.id);
-  const active = await getActiveRoutine(supabase, user.id);
+  const { active, routines } = await ensureUserRoutines(supabase, user.id);
 
   const params = await searchParams;
   let scopeRoutineId: string | null;
@@ -34,10 +32,6 @@ export default async function ProgressPage({ searchParams }: Props) {
     scopeRoutineId = active?.id ?? null;
   }
 
-  const exercises = await loadExerciseProgress(supabase, user.id, {
-    routineId: scopeRoutineId,
-  });
-
   let aiQuery = supabase
     .from("set_logs")
     .select("weight, ai_suggested_weight, sessions!inner(user_id, routine_id)")
@@ -47,7 +41,14 @@ export default async function ProgressPage({ searchParams }: Props) {
   if (scopeRoutineId) {
     aiQuery = aiQuery.eq("sessions.routine_id", scopeRoutineId);
   }
-  const { data: aiRows } = await aiQuery;
+
+  // Neither query depends on the other's result — run the (larger)
+  // exercise-progress read and the AI-accuracy read concurrently instead
+  // of waiting for one to finish before starting the other.
+  const [exercises, { data: aiRows }] = await Promise.all([
+    loadExerciseProgress(supabase, user.id, { routineId: scopeRoutineId }),
+    aiQuery,
+  ]);
   const aiAccuracy: AiAccuracy = summarizeAiAccuracy(aiRows ?? []);
   const weekStart = shiftISODate(todayISO(), -6);
 

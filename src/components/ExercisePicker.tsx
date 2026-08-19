@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
-import { customLibraryExercise } from "@/lib/exercise-library";
+import { customLibraryExercise, safeExerciseImageUrl } from "@/lib/exercise-library";
 import type { LibraryExercise } from "@/lib/types";
 
 export function ExercisePicker({
@@ -139,10 +140,11 @@ export function ExercisePicker({
                   onClick={() => onPick(ex)}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left active:scale-[0.99]"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={ex.imageUrl ?? "/icon-192.png"}
+                  <Image
+                    src={safeExerciseImageUrl(ex.imageUrl)}
                     alt=""
+                    width={56}
+                    height={56}
                     className="h-14 w-14 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
                   />
                   <div className="min-w-0">

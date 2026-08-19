@@ -94,22 +94,46 @@ export async function getRoutineDays(
   return (data ?? []) as RoutineDay[];
 }
 
-/** Clone seeded template exercises into the user's first routine if needed. */
+/**
+ * Clone seeded template exercises into the user's first routine if needed.
+ * Returns the full routine list alongside the active one — callers that
+ * also need the list (Routines/Progress pages) can reuse it instead of
+ * immediately re-running the exact same query this function already did.
+ */
 export async function ensureUserRoutines(
   supabase: SupabaseClient,
   userId: string
-): Promise<Routine> {
+): Promise<{ active: Routine; routines: Routine[] }> {
   const existing = await listRoutines(supabase, userId);
   if (existing.length > 0) {
     const active = existing.find((r) => r.is_active) ?? existing[0];
     if (!active.is_active) {
       await setActiveRoutine(supabase, userId, active.id);
-      return { ...active, is_active: true };
+      // setActiveRoutine also clears is_active on every other routine —
+      // re-fetch rather than guess at their new state from the stale list.
+      const refreshed = await listRoutines(supabase, userId);
+      // Under a race (e.g. this exact routine got deleted or reassigned
+      // by a concurrent request between setActiveRoutine and this
+      // re-fetch), fall back to whatever the refreshed list itself says
+      // is active rather than a synthetic object that might not actually
+      // be a member of `routines` — callers rely on `active` being
+      // findable inside `routines` (e.g. to highlight it in a picker).
+      const stillActive =
+        refreshed.find((r) => r.id === active.id) ??
+        refreshed.find((r) => r.is_active) ??
+        refreshed[0] ??
+        { ...active, is_active: true };
+      return { active: stillActive, routines: refreshed };
     }
-    return active;
+    return { active, routines: existing };
   }
 
-  return cloneTemplateRoutine(supabase, userId, "3-Week Periodization");
+  const cloned = await cloneTemplateRoutine(
+    supabase,
+    userId,
+    "3-Week Periodization"
+  );
+  return { active: cloned, routines: [cloned] };
 }
 
 async function fetchTemplates(
@@ -388,16 +412,20 @@ export async function loadRoutineEditor(
   supabase: SupabaseClient,
   routineId: string
 ): Promise<{ routine: Routine; days: EditorDay[] } | null> {
-  const routine = await getRoutine(supabase, routineId);
+  // getRoutine, getRoutineDays, and the exercises query are all independent
+  // reads keyed only on routineId — run them concurrently instead of
+  // waiting for the (rare) not-found check before starting the other two.
+  const [routine, days, { data: exercises, error }] = await Promise.all([
+    getRoutine(supabase, routineId),
+    getRoutineDays(supabase, routineId),
+    supabase
+      .from("exercises")
+      .select("*, exercise_targets(*)")
+      .eq("routine_id", routineId)
+      .eq("is_template", false)
+      .order("sort_order"),
+  ]);
   if (!routine) return null;
-
-  const days = await getRoutineDays(supabase, routineId);
-  const { data: exercises, error } = await supabase
-    .from("exercises")
-    .select("*, exercise_targets(*)")
-    .eq("routine_id", routineId)
-    .eq("is_template", false)
-    .order("sort_order");
   if (error) throw error;
 
   const byDay = new Map<string, EditorExercise[]>();
