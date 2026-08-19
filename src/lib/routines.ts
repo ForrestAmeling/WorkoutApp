@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   defaultTargetsForFocus,
@@ -170,41 +171,130 @@ export async function cloneTemplateRoutine(
     (days as RoutineDay[]).map((d) => [d.day_number, d.id])
   );
 
-  for (const tmpl of templates) {
-    const { data: ex, error: exError } = await supabase
-      .from("exercises")
-      .insert({
-        name: tmpl.name,
-        muscle_group: tmpl.muscle_group,
-        day_number: tmpl.day_number,
-        is_accessory: tmpl.is_accessory,
-        sort_order: tmpl.sort_order,
-        routine_id: routine.id,
-        routine_day_id: dayIdByNumber.get(tmpl.day_number)!,
-        library_id: null,
-        image_url: null,
-        is_template: false,
-      })
-      .select("id")
-      .single();
-    if (exError) throw exError;
+  // Batch both inserts (one round trip each) instead of one exercise +
+  // one exercise_targets call per template row. Pre-generating each
+  // exercise's id up front lets the exercise_targets rows reference it
+  // immediately, without needing to correlate against whatever order a
+  // multi-row INSERT...RETURNING happens to come back in.
+  const exerciseIds = templates.map(() => randomUUID());
+  const exerciseRows = templates.map((tmpl, i) => ({
+    id: exerciseIds[i],
+    name: tmpl.name,
+    muscle_group: tmpl.muscle_group,
+    day_number: tmpl.day_number,
+    is_accessory: tmpl.is_accessory,
+    sort_order: tmpl.sort_order,
+    routine_id: routine.id,
+    routine_day_id: dayIdByNumber.get(tmpl.day_number)!,
+    library_id: null,
+    image_url: null,
+    is_template: false,
+  }));
+  const { error: exError } = await supabase
+    .from("exercises")
+    .insert(exerciseRows);
+  if (exError) throw exError;
 
-    const targets = (tmpl.exercise_targets ?? []).map((t) => ({
-      exercise_id: ex.id,
+  const targetRows = templates.flatMap((tmpl, i) =>
+    (tmpl.exercise_targets ?? []).map((t) => ({
+      exercise_id: exerciseIds[i],
       week_focus: t.week_focus,
       target_sets: t.target_sets,
       rep_low: t.rep_low,
       rep_high: t.rep_high,
-    }));
-    if (targets.length) {
-      const { error: tError } = await supabase
-        .from("exercise_targets")
-        .insert(targets);
-      if (tError) throw tError;
-    }
+    }))
+  );
+  if (targetRows.length) {
+    const { error: tError } = await supabase
+      .from("exercise_targets")
+      .insert(targetRows);
+    if (tError) throw tError;
   }
 
   return routine as Routine;
+}
+
+/**
+ * Batch-insert a routine's days, then its exercises, then its
+ * exercise_targets — one round trip per level instead of one row at a time
+ * per day/exercise. Each day/exercise gets a client-generated id up front
+ * so the next level's rows can reference it immediately, without needing
+ * to correlate against whatever order a multi-row INSERT...RETURNING
+ * happens to come back in. Shared by createRoutineFromDays and
+ * replaceRoutineContent, which both populate a routine's content the same
+ * way.
+ */
+async function insertRoutineDays(
+  supabase: SupabaseClient,
+  routineId: string,
+  days: RoutineDayInput[],
+  foci: WeekFocus[]
+): Promise<void> {
+  const plannedDays = days.map((day, i) => ({
+    id: randomUUID(),
+    day,
+    sortOrder: i + 1,
+  }));
+  const dayRows = plannedDays.map((pd) => ({
+    id: pd.id,
+    routine_id: routineId,
+    day_number: pd.day.day_number,
+    name: pd.day.name,
+    sort_order: pd.sortOrder,
+  }));
+  const { error: daysError } = await supabase
+    .from("routine_days")
+    .insert(dayRows);
+  if (daysError) throw daysError;
+
+  const plannedExercises = plannedDays.flatMap((pd) =>
+    pd.day.exercises.map((ex, j) => ({
+      id: randomUUID(),
+      dayId: pd.id,
+      dayNumber: pd.day.day_number,
+      sortOrder: j + 1,
+      ex,
+    }))
+  );
+  if (plannedExercises.length === 0) return;
+
+  const exerciseRows = plannedExercises.map((p) => ({
+    id: p.id,
+    name: p.ex.name,
+    muscle_group: p.ex.muscle_group ?? null,
+    day_number: p.dayNumber,
+    is_accessory: p.ex.is_accessory ?? false,
+    sort_order: p.sortOrder,
+    routine_id: routineId,
+    routine_day_id: p.dayId,
+    library_id: p.ex.library_id ?? null,
+    image_url: p.ex.image_url ?? null,
+    is_template: false,
+  }));
+  const { error: exError } = await supabase
+    .from("exercises")
+    .insert(exerciseRows);
+  if (exError) throw exError;
+
+  const targetRows = plannedExercises.flatMap((p) =>
+    foci.map((focus) => {
+      const custom = p.ex.targets?.[focus];
+      const defaults = defaultTargetsForFocus(focus);
+      return {
+        exercise_id: p.id,
+        week_focus: focus,
+        target_sets:
+          custom?.target_sets ?? p.ex.target_sets ?? defaults.target_sets,
+        rep_low: custom?.rep_low ?? p.ex.rep_low ?? defaults.rep_low,
+        rep_high: custom?.rep_high ?? p.ex.rep_high ?? defaults.rep_high,
+      };
+    })
+  );
+  if (targetRows.length === 0) return;
+  const { error: tError } = await supabase
+    .from("exercise_targets")
+    .insert(targetRows);
+  if (tError) throw tError;
 }
 
 export async function createRoutineFromDays(
@@ -246,58 +336,7 @@ export async function createRoutineFromDays(
     .single();
   if (error) throw error;
 
-  const foci = fociForMode(mode);
-
-  for (const [i, day] of opts.days.entries()) {
-    const { data: dayRow, error: dayError } = await supabase
-      .from("routine_days")
-      .insert({
-        routine_id: routine.id,
-        day_number: day.day_number,
-        name: day.name,
-        sort_order: i + 1,
-      })
-      .select("*")
-      .single();
-    if (dayError) throw dayError;
-
-    for (const [j, ex] of day.exercises.entries()) {
-      const { data: exRow, error: exError } = await supabase
-        .from("exercises")
-        .insert({
-          name: ex.name,
-          muscle_group: ex.muscle_group ?? null,
-          day_number: day.day_number,
-          is_accessory: ex.is_accessory ?? false,
-          sort_order: j + 1,
-          routine_id: routine.id,
-          routine_day_id: dayRow.id,
-          library_id: ex.library_id ?? null,
-          image_url: ex.image_url ?? null,
-          is_template: false,
-        })
-        .select("id")
-        .single();
-      if (exError) throw exError;
-
-      const targetRows = foci.map((focus) => {
-        const custom = ex.targets?.[focus];
-        const defaults = defaultTargetsForFocus(focus);
-        return {
-          exercise_id: exRow.id,
-          week_focus: focus,
-          target_sets: custom?.target_sets ?? ex.target_sets ?? defaults.target_sets,
-          rep_low: custom?.rep_low ?? ex.rep_low ?? defaults.rep_low,
-          rep_high: custom?.rep_high ?? ex.rep_high ?? defaults.rep_high,
-        };
-      });
-
-      const { error: tError } = await supabase
-        .from("exercise_targets")
-        .insert(targetRows);
-      if (tError) throw tError;
-    }
-  }
+  await insertRoutineDays(supabase, routine.id, opts.days, fociForMode(mode));
 
   return routine as Routine;
 }
@@ -489,57 +528,7 @@ export async function replaceRoutineContent(
     .eq("routine_id", routineId);
   if (delError) throw delError;
 
-  const foci = fociForMode(mode);
-  for (const [i, day] of opts.days.entries()) {
-    const { data: dayRow, error: dayError } = await supabase
-      .from("routine_days")
-      .insert({
-        routine_id: routineId,
-        day_number: day.day_number,
-        name: day.name,
-        sort_order: i + 1,
-      })
-      .select("*")
-      .single();
-    if (dayError) throw dayError;
-
-    for (const [j, ex] of day.exercises.entries()) {
-      const { data: exRow, error: exError } = await supabase
-        .from("exercises")
-        .insert({
-          name: ex.name,
-          muscle_group: ex.muscle_group ?? null,
-          day_number: day.day_number,
-          is_accessory: ex.is_accessory ?? false,
-          sort_order: j + 1,
-          routine_id: routineId,
-          routine_day_id: dayRow.id,
-          library_id: ex.library_id ?? null,
-          image_url: ex.image_url ?? null,
-          is_template: false,
-        })
-        .select("id")
-        .single();
-      if (exError) throw exError;
-
-      const targetRows = foci.map((focus) => {
-        const custom = ex.targets?.[focus];
-        const defaults = defaultTargetsForFocus(focus);
-        return {
-          exercise_id: exRow.id,
-          week_focus: focus,
-          target_sets:
-            custom?.target_sets ?? ex.target_sets ?? defaults.target_sets,
-          rep_low: custom?.rep_low ?? ex.rep_low ?? defaults.rep_low,
-          rep_high: custom?.rep_high ?? ex.rep_high ?? defaults.rep_high,
-        };
-      });
-      const { error: tError } = await supabase
-        .from("exercise_targets")
-        .insert(targetRows);
-      if (tError) throw tError;
-    }
-  }
+  await insertRoutineDays(supabase, routineId, opts.days, fociForMode(mode));
 
   const loaded = await loadRoutineEditor(supabase, routineId);
   if (!loaded) throw new Error("Failed to reload routine");
