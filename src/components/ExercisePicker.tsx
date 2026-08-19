@@ -55,6 +55,11 @@ export function ExercisePicker({
       setResults(data.results ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Search failed");
+      // Clear stale results instead of leaving the previous successful
+      // search's list on screen next to an error for a query it no longer
+      // matches — matches ExerciseHowTo.tsx's search, which already does
+      // this.
+      setResults([]);
     } finally {
       setLoading(false);
     }
