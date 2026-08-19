@@ -36,6 +36,19 @@ export function RoutineEditor({
   const [aiPrompt, setAiPrompt] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState(initialRoutine.name);
+  const [muscleOptions, setMuscleOptions] = useState<string[]>([]);
+
+  // Same free-exercise-db muscle vocabulary ExercisePicker's filter dropdown
+  // already uses, so custom exercises can be tagged with the same
+  // categories a library-linked exercise would carry — instead of the only
+  // way to set a custom exercise's muscle group being to fully switch it to
+  // a (possibly differently-named) library match.
+  useEffect(() => {
+    void fetch("/api/exercise-library?meta=1")
+      .then((r) => r.json())
+      .then((d) => setMuscleOptions(d.muscles ?? []))
+      .catch(() => undefined);
+  }, []);
 
   const activeDay = useMemo(
     () => days.find((d) => d.id === activeDayId) ?? days[0],
@@ -236,6 +249,31 @@ export function RoutineEditor({
       }))
     );
     router.refresh();
+  }
+
+  // Only meant for custom (unlinked) exercises — a library-linked exercise's
+  // muscle_group is kept in sync with free-exercise-db by switchExercise
+  // above, so Progress's muscle-volume breakdown (which reads muscle_group
+  // straight off the exercises row) reflects it automatically.
+  async function updateMuscleGroup(exerciseId: string, muscleGroup: string) {
+    const value = muscleGroup || null;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("exercises")
+      .update({ muscle_group: value })
+      .eq("id", exerciseId);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setDays((prev) =>
+      prev.map((d) => ({
+        ...d,
+        exercises: d.exercises.map((e) =>
+          e.id === exerciseId ? { ...e, muscle_group: value } : e
+        ),
+      }))
+    );
   }
 
   async function removeExercise(exerciseId: string) {
@@ -542,9 +580,32 @@ export function RoutineEditor({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-[var(--ink)]">{ex.name}</p>
-                      <p className="text-xs text-[var(--muted)]">
-                        {ex.muscle_group ?? "custom"}
-                      </p>
+                      {ex.library_id ? (
+                        <p className="text-xs text-[var(--muted)]">
+                          {ex.muscle_group ?? "—"}
+                        </p>
+                      ) : (
+                        <select
+                          value={ex.muscle_group ?? ""}
+                          onChange={(e) =>
+                            void updateMuscleGroup(ex.id, e.target.value)
+                          }
+                          className="mt-0.5 min-h-7 max-w-[9rem] rounded-lg bg-[var(--input)] px-1.5 text-xs text-[var(--muted)] ring-1 ring-[var(--stroke)]"
+                        >
+                          <option value="">Pick a muscle…</option>
+                          {ex.muscle_group &&
+                            !muscleOptions.includes(ex.muscle_group) && (
+                              <option value={ex.muscle_group}>
+                                {ex.muscle_group}
+                              </option>
+                            )}
+                          {muscleOptions.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <div className="mt-1">
                         <ExerciseHowToButton
                           libraryId={ex.library_id}
