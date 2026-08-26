@@ -15,9 +15,10 @@ export type QueuedSet = {
     exercise_id: string;
     set_number: number;
     weight: number | null;
-    reps: number;
+    reps: number | null;
     ai_suggested_weight: number | null;
     notes: string | null;
+    skipped: boolean;
   };
   createdAt: string;
 };
@@ -59,6 +60,7 @@ export function queuedToSetLog(item: QueuedSet, exerciseId: string): SetLog {
     ai_suggested_weight: item.log.ai_suggested_weight,
     notes: item.log.notes,
     created_at: item.createdAt,
+    skipped: item.log.skipped,
   };
 }
 

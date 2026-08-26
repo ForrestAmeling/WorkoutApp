@@ -19,6 +19,7 @@ type HistorySetRowData = {
   reps: number | null;
   ai_suggested_weight: number | null;
   notes: string | null;
+  skipped: boolean;
 };
 
 /** A single logged set inside a History session, editable in place. */
@@ -39,13 +40,16 @@ export function HistorySetRow({ row }: { row: HistorySetRowData }) {
   const [error, setError] = useState<string | null>(null);
 
   function startEdit() {
-    setBodyweight(current.weight == null);
+    // A skipped row has no real weight/reps to prefill — start the edit
+    // form blank (not flagged as bodyweight) so Save requires the user to
+    // enter real numbers, turning the skip into an actual logged set.
+    setBodyweight(current.skipped ? false : current.weight == null);
     setWeight(
-      current.weight == null
+      current.skipped || current.weight == null
         ? ""
         : String(lbToDisplay(Number(current.weight), unit))
     );
-    setReps(current.reps ?? "");
+    setReps(current.skipped ? "" : current.reps ?? "");
     setNotes(current.notes ?? "");
     setError(null);
     setEditing(true);
@@ -64,14 +68,20 @@ export function HistorySetRow({ row }: { row: HistorySetRowData }) {
     const nextNotes = notes.trim() || null;
     const { error: updateError } = await supabase
       .from("set_logs")
-      .update({ weight: lb, reps: nextReps, notes: nextNotes })
+      .update({ weight: lb, reps: nextReps, notes: nextNotes, skipped: false })
       .eq("id", row.id);
     setBusy(false);
     if (updateError) {
       setError(updateError.message);
       return;
     }
-    setCurrent((c) => ({ ...c, weight: lb, reps: nextReps, notes: nextNotes }));
+    setCurrent((c) => ({
+      ...c,
+      weight: lb,
+      reps: nextReps,
+      notes: nextNotes,
+      skipped: false,
+    }));
     setEditing(false);
     router.refresh();
   }
@@ -104,10 +114,16 @@ export function HistorySetRow({ row }: { row: HistorySetRowData }) {
         >
           <span className="text-[var(--muted)]">Set {current.set_number}</span>
           <span className="tabular-nums font-semibold">
-            {current.weight == null
-              ? "Bodyweight"
-              : formatWeight(current.weight, unit)}{" "}
-            × {current.reps}
+            {current.skipped ? (
+              "Skipped"
+            ) : (
+              <>
+                {current.weight == null
+                  ? "Bodyweight"
+                  : formatWeight(current.weight, unit)}{" "}
+                × {current.reps}
+              </>
+            )}
             {current.ai_suggested_weight != null && (
               <span className="ml-2 font-normal text-[var(--muted)]">
                 (AI {formatWeight(current.ai_suggested_weight, unit)})
@@ -130,6 +146,7 @@ export function HistorySetRow({ row }: { row: HistorySetRowData }) {
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
           Edit set {current.set_number}
+          {current.skipped ? " · skipped" : ""}
         </p>
         <button
           type="button"

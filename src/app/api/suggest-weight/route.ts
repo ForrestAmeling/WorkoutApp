@@ -4,6 +4,7 @@ import { getVerifiedUser } from "@/lib/supabase/verified-user";
 import {
   buildDeepSeekPrompt,
   clampDelta,
+  crossFocusSuggestion,
   ruleBasedSuggestion,
   type HistorySet,
 } from "@/lib/weight-suggestion";
@@ -116,6 +117,44 @@ export async function POST(request: Request) {
   ].slice(0, 8);
 
   if (history.length === 0) {
+    // No history for this exact week focus yet. Fall back to whatever
+    // focus *does* have logged history for this exercise (any week focus,
+    // still scoped to this user) and translate it via crossFocusSuggestion's
+    // Epley-formula estimate, instead of giving up with source: "none".
+    const { data: crossRows } = await supabase
+      .from("set_logs")
+      .select(
+        `
+        weight,
+        reps,
+        set_number,
+        created_at,
+        sessions!inner (
+          week_focus,
+          user_id
+        )
+      `
+      )
+      .in("exercise_id", exerciseIds)
+      .eq("sessions.user_id", user.id)
+      .not("weight", "is", null)
+      .not("reps", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(12);
+
+    const crossHistory: HistorySet[] = (crossRows ?? [])
+      .filter((r) => r.weight != null && r.reps != null)
+      .map((r) => ({
+        weight: Number(r.weight),
+        reps: Number(r.reps),
+        set_number: r.set_number,
+      }));
+
+    const estimate = crossFocusSuggestion(crossHistory, repLow, repHigh);
+    if (estimate) {
+      return NextResponse.json(estimate);
+    }
+
     return NextResponse.json({
       suggested_weight: null,
       rationale:
