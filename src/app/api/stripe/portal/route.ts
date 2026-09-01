@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getVerifiedUser } from "@/lib/supabase/verified-user";
-import { appUrl, getPortalConfigurationId, getStripe } from "@/lib/stripe";
+import {
+  appUrl,
+  getPortalConfigurationId,
+  getStripe,
+  stripeErrorMessage,
+} from "@/lib/stripe";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -23,11 +28,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const session = await getStripe().billingPortal.sessions.create({
-    customer: existing.stripe_customer_id,
-    configuration: await getPortalConfigurationId(),
-    return_url: `${appUrl(request)}/settings`,
-  });
-
-  return NextResponse.json({ url: session.url });
+  try {
+    const session = await getStripe().billingPortal.sessions.create({
+      customer: existing.stripe_customer_id,
+      configuration: await getPortalConfigurationId(),
+      return_url: `${appUrl(request)}/settings`,
+    });
+    return NextResponse.json({ url: session.url });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: stripeErrorMessage(error, "Could not open billing."),
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getVerifiedUser } from "@/lib/supabase/verified-user";
-import { appUrl, getStripe, getStripePriceId } from "@/lib/stripe";
+import {
+  appUrl,
+  getStripe,
+  getStripePriceId,
+  stripeErrorMessage,
+} from "@/lib/stripe";
 import { hasSubscriptionAccess } from "@/lib/subscription-access";
 
 function checkoutError(error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Could not start checkout.";
-  return NextResponse.json({ error: message }, { status: 500 });
+  return NextResponse.json(
+    { error: stripeErrorMessage(error, "Could not start checkout.") },
+    { status: 500 }
+  );
 }
 
 export async function POST(request: Request) {
