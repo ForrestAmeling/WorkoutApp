@@ -81,6 +81,7 @@ export type SetLog = {
   ai_suggested_weight: number | null;
   notes: string | null;
   created_at: string;
+  skipped: boolean;
 };
 
 export type ExerciseWithTarget = Exercise & {

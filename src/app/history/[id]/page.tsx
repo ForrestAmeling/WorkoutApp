@@ -37,6 +37,7 @@ export default async function SessionDetailPage({ params }: Props) {
     reps: number | null;
     ai_suggested_weight: number | null;
     notes: string | null;
+    skipped: boolean;
     exercises: { name: string } | null;
   };
 

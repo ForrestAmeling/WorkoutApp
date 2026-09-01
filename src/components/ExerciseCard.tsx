@@ -242,6 +242,7 @@ export function ExerciseCard({
       reps: Number(reps),
       ai_suggested_weight: aiSuggested,
       notes: notes.trim() || null,
+      skipped: false,
     };
 
     try {
@@ -291,6 +292,95 @@ export function ExerciseCard({
     onLogged();
   }
 
+  async function skipSet() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const supabase = createClient();
+    const payload = {
+      exercise_id: exercise.id,
+      set_number: nextSet,
+      weight: null,
+      reps: null,
+      ai_suggested_weight: null,
+      notes: null,
+      skipped: true,
+    };
+
+    try {
+      const activeSessionId = await resolveSessionId(supabase);
+      const { data, error: insertError } = await supabase
+        .from("set_logs")
+        .insert({
+          session_id: activeSessionId,
+          ...payload,
+        })
+        .select("*")
+        .single();
+
+      if (insertError) throw insertError;
+      commitSets([...sets, data as SetLog]);
+      afterSave();
+    } catch (e) {
+      if (isNetworkError(e)) {
+        const queued = enqueueSet({
+          session: {
+            routineId,
+            weekFocus,
+            dayNumber,
+            cycleId,
+            performedOn,
+          },
+          log: payload,
+        });
+        commitSets([...sets, queuedToSetLog(queued, exercise.id)]);
+        afterSave();
+        setError("Saved on this phone — will sync when you are online.");
+      } else {
+        setError(e instanceof Error ? e.message : "Could not skip set");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function skipExercise() {
+    if (busy) return;
+    if (!confirm("Skip the rest of this exercise?")) return;
+    setBusy(true);
+    setError(null);
+    const supabase = createClient();
+    try {
+      const activeSessionId = await resolveSessionId(supabase);
+      const rows = [];
+      for (let n = nextSet; n <= exercise.target.target_sets; n++) {
+        rows.push({
+          session_id: activeSessionId,
+          exercise_id: exercise.id,
+          set_number: n,
+          weight: null,
+          reps: null,
+          ai_suggested_weight: null,
+          notes: null,
+          skipped: true,
+        });
+      }
+      const { data, error: insertError } = await supabase
+        .from("set_logs")
+        .insert(rows)
+        .select("*");
+      if (insertError) {
+        setError(insertError.message);
+        return;
+      }
+      commitSets([...sets, ...((data as SetLog[]) ?? [])]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not skip exercise");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveEdit(set: SetLog) {
     if ((!editBodyweight && editWeight === "") || editReps === "") {
       setError("Enter weight and reps");
@@ -310,6 +400,7 @@ export function ExerciseCard({
         weight: lb,
         reps: Number(editReps),
         notes: editNotes.trim() || null,
+        skipped: false,
       })
       .eq("id", set.id)
       .select("*")
@@ -390,11 +481,16 @@ export function ExerciseCard({
 
   function startEdit(s: SetLog) {
     setEditingId(s.id);
-    setEditBodyweight(s.weight == null);
+    // A skipped row has no real weight/reps to prefill — start the edit
+    // form blank (not flagged as bodyweight) so Save requires the user to
+    // enter real numbers, turning the skip into an actual logged set.
+    setEditBodyweight(s.skipped ? false : s.weight == null);
     setEditWeight(
-      s.weight == null ? "" : String(lbToDisplay(Number(s.weight), unit))
+      s.skipped || s.weight == null
+        ? ""
+        : String(lbToDisplay(Number(s.weight), unit))
     );
-    setEditReps(s.reps ?? "");
+    setEditReps(s.skipped ? "" : s.reps ?? "");
     setEditNotes(s.notes ?? "");
     onOpenChange(true);
   }
@@ -453,6 +549,7 @@ export function ExerciseCard({
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
                       Edit set {s.set_number}
                       {s.id.startsWith("local-") ? " · pending sync" : ""}
+                      {s.skipped ? " · skipped" : ""}
                     </p>
                     <button
                       type="button"
@@ -543,8 +640,16 @@ export function ExerciseCard({
                     {s.id.startsWith("local-") ? " · queued" : ""}
                   </span>
                   <span className="font-semibold tabular-nums">
-                    {s.weight == null ? "Bodyweight" : formatWeight(s.weight, unit)}{" "}
-                    × {s.reps}
+                    {s.skipped ? (
+                      "Skipped"
+                    ) : (
+                      <>
+                        {s.weight == null
+                          ? "Bodyweight"
+                          : formatWeight(s.weight, unit)}{" "}
+                        × {s.reps}
+                      </>
+                    )}
                     {s.notes ? (
                       <span className="ml-2 font-normal text-[var(--muted)]">
                         · {s.notes}
@@ -701,14 +806,35 @@ export function ExerciseCard({
 
           {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 
-          <button
-            type="button"
-            onClick={() => void logSet()}
-            disabled={busy}
-            className="min-h-14 w-full rounded-xl bg-[var(--accent)] text-base font-bold text-[var(--accent-ink)] transition active:scale-[0.99] disabled:opacity-60"
-          >
-            {busy ? "Saving…" : `Save set ${nextSet}`}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void logSet()}
+              disabled={busy}
+              className="min-h-14 flex-1 rounded-xl bg-[var(--accent)] text-base font-bold text-[var(--accent-ink)] transition active:scale-[0.99] disabled:opacity-60"
+            >
+              {busy ? "Saving…" : `Save set ${nextSet}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => void skipSet()}
+              disabled={busy}
+              className="min-h-14 rounded-xl bg-[var(--input)] px-4 text-sm font-bold text-[var(--ink)] ring-1 ring-[var(--stroke)] transition active:scale-95 disabled:opacity-60"
+            >
+              Skip this set
+            </button>
+          </div>
+
+          {!targetDone && (
+            <button
+              type="button"
+              onClick={() => void skipExercise()}
+              disabled={busy}
+              className="w-full text-center text-sm font-semibold text-[var(--muted)] disabled:opacity-60"
+            >
+              Skip rest of this exercise
+            </button>
+          )}
         </div>
       )}
     </section>
