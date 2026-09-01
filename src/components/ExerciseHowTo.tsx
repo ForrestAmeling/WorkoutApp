@@ -304,6 +304,7 @@ function ExerciseHowToSheet({
                             alt=""
                             width={48}
                             height={48}
+                            sizes="48px"
                             className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
                           />
                           <div className="min-w-0">

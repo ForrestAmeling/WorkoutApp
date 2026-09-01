@@ -1,12 +1,10 @@
 import Link from "next/link";
-import { AppShell } from "@/components/AppShell";
 import { requireBillingPage } from "@/lib/require-billing";
-import { billingNotice } from "@/lib/subscription-access";
 import { formatHumanDate, WEEK_LABELS } from "@/lib/program";
 import type { WeekFocus } from "@/lib/types";
 
 export default async function HistoryPage() {
-  const { user, supabase, subscription } = await requireBillingPage();
+  const { user, supabase } = await requireBillingPage();
 
   const { data: sessions } = await supabase
     .from("sessions")
@@ -51,10 +49,7 @@ export default async function HistoryPage() {
   });
 
   return (
-    <AppShell
-      billingNotice={billingNotice(subscription)}
-      trialEnd={subscription?.trial_end}
-    >
+    <>
       <header className="mb-4">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
           History
@@ -93,6 +88,6 @@ export default async function HistoryPage() {
           </li>
         )}
       </ul>
-    </AppShell>
+    </>
   );
 }

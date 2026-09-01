@@ -363,6 +363,7 @@ export function NewRoutineForm() {
                   alt=""
                   width={48}
                   height={48}
+                  sizes="48px"
                   className="h-12 w-12 rounded-lg object-cover"
                 />
                 <div className="min-w-0 flex-1">

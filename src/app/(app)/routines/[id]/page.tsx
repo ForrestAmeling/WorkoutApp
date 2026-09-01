@@ -1,26 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { RoutineEditor } from "@/components/RoutineEditor";
 import { StartWorkoutButton } from "@/components/StartWorkoutButton";
 import { requireBillingPage } from "@/lib/require-billing";
-import { billingNotice } from "@/lib/subscription-access";
 import { loadRoutineEditor } from "@/lib/routines";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function RoutineDetailPage({ params }: Props) {
   const { id } = await params;
-  const { user, supabase, subscription } = await requireBillingPage();
+  const { user, supabase } = await requireBillingPage();
 
   const data = await loadRoutineEditor(supabase, id);
   if (!data || data.routine.user_id !== user.id) notFound();
 
   return (
-    <AppShell
-      billingNotice={billingNotice(subscription)}
-      trialEnd={subscription?.trial_end}
-    >
+    <>
       <Link
         href="/routines"
         className="text-sm font-semibold text-[var(--muted)]"
@@ -43,6 +38,6 @@ export default async function RoutineDetailPage({ params }: Props) {
       <div className="mt-5">
         <RoutineEditor routine={data.routine} days={data.days} />
       </div>
-    </AppShell>
+    </>
   );
 }

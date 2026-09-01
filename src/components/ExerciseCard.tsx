@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { formatTarget } from "@/lib/program";
@@ -23,7 +23,7 @@ import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-lib
 import { SET_SYNCED_EVENT, type SetSyncedDetail } from "@/lib/set-sync-events";
 import type { ExerciseWithTarget, LibraryExercise, SetLog, WeekFocus } from "@/lib/types";
 
-export function ExerciseCard({
+export const ExerciseCard = memo(function ExerciseCard({
   exercise,
   sessionId: initialSessionId,
   weekFocus,
@@ -32,6 +32,7 @@ export function ExerciseCard({
   cycleId,
   performedOn,
   open,
+  priority = false,
   onOpenChange,
   onSetsChange,
   onLogged,
@@ -45,7 +46,8 @@ export function ExerciseCard({
   cycleId: string | null;
   performedOn: string;
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  priority?: boolean;
+  onOpenChange: (exerciseId: string, open: boolean) => void;
   onSetsChange: (exerciseId: string, sets: SetLog[]) => void;
   onLogged: () => void;
   onReplaced?: (
@@ -132,7 +134,7 @@ export function ExerciseCard({
     onReplaced?.(exercise.id, patch);
   }
 
-  async function fetchSuggestion() {
+  async function fetchSuggestion(opts?: { ai?: boolean }) {
     setSuggesting(true);
     setError(null);
     try {
@@ -145,6 +147,7 @@ export function ExerciseCard({
           week_focus: weekFocus,
           rep_low: exercise.target.rep_low,
           rep_high: exercise.target.rep_high,
+          prefer_rule: opts?.ai !== true,
           session_sets: sets.map((s) => ({
             weight: s.weight,
             reps: s.reps,
@@ -492,7 +495,7 @@ export function ExerciseCard({
     );
     setEditReps(s.skipped ? "" : s.reps ?? "");
     setEditNotes(s.notes ?? "");
-    onOpenChange(true);
+    onOpenChange(exercise.id, true);
   }
 
   return (
@@ -500,7 +503,7 @@ export function ExerciseCard({
       <div className="flex items-start justify-between gap-3 px-4 py-4">
         <button
           type="button"
-          onClick={() => onOpenChange(!open)}
+          onClick={() => onOpenChange(exercise.id, !open)}
           className="flex min-w-0 flex-1 items-start gap-3 text-left"
         >
           <Image
@@ -508,6 +511,8 @@ export function ExerciseCard({
             alt=""
             width={48}
             height={48}
+            sizes="48px"
+            priority={priority}
             className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
           />
           <div className="min-w-0">
@@ -684,7 +689,7 @@ export function ExerciseCard({
             {!bodyweight && (
               <button
                 type="button"
-                onClick={() => void fetchSuggestion()}
+                onClick={() => void fetchSuggestion({ ai: true })}
                 disabled={suggesting}
                 className="text-sm font-semibold text-[var(--accent-text)] underline-offset-2 hover:underline disabled:opacity-50"
               >
@@ -839,4 +844,4 @@ export function ExerciseCard({
       )}
     </section>
   );
-}
+});

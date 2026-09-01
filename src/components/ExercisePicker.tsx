@@ -150,6 +150,7 @@ export function ExercisePicker({
                     alt=""
                     width={56}
                     height={56}
+                    sizes="56px"
                     className="h-14 w-14 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
                   />
                   <div className="min-w-0">

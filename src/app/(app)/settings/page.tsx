@@ -1,24 +1,18 @@
-import { redirect } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { SettingsForm } from "@/components/SettingsForm";
 import { SubscriptionCard } from "@/components/SubscriptionCard";
+import { getAppContext } from "@/lib/require-billing";
 import { formatUsdFromCents, getStripe, getStripePriceId } from "@/lib/stripe";
 import {
   attachPaymentMethodFromSetupSession,
   ensureTrialSubscription,
   syncStripeSubscription,
 } from "@/lib/subscription";
-import { billingNotice } from "@/lib/subscription-access";
-import { createClient } from "@/lib/supabase/server";
-import { getVerifiedUser } from "@/lib/supabase/verified-user";
 import type { Subscription } from "@/lib/types";
 
 export default async function SettingsPage({
   searchParams,
 }: PageProps<"/settings">) {
-  const supabase = await createClient();
-  const user = await getVerifiedUser(supabase);
-  if (!user) redirect("/login");
+  const { user, supabase } = await getAppContext();
 
   try {
     await ensureTrialSubscription(user);
@@ -61,10 +55,7 @@ export default async function SettingsPage({
   ]);
 
   return (
-    <AppShell
-      billingNotice={billingNotice(data as Subscription | null)}
-      trialEnd={(data as Subscription | null)?.trial_end}
-    >
+    <>
       <header className="mb-5">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
           Settings
@@ -91,7 +82,7 @@ export default async function SettingsPage({
         />
         <SettingsForm />
       </div>
-    </AppShell>
+    </>
   );
 }
 

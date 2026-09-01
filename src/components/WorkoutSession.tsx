@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DateStrip } from "@/components/DateStrip";
 import { DayPicker } from "@/components/DayPicker";
@@ -9,6 +9,7 @@ import { RestTimer } from "@/components/RestTimer";
 import { useSettings } from "@/components/SettingsProvider";
 import { formatWeight } from "@/lib/units";
 import { nextPosition, todayISO, WEEK_LABELS } from "@/lib/program";
+import { libraryToExercisePatch } from "@/lib/exercise-library";
 import type { PeriodizationMode } from "@/lib/periodization";
 import type {
   ExerciseWithTarget,
@@ -53,6 +54,8 @@ export function WorkoutSession({
     initialExercises.find((e) => e.sets.length < e.target.target_sets)?.id ??
       null
   );
+  const openIdRef = useRef(openId);
+  openIdRef.current = openId;
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [dismissedComplete, setDismissedComplete] = useState(false);
 
@@ -133,30 +136,40 @@ export function WorkoutSession({
   // so this logic simply doesn't run and the user's choice sticks — letting
   // them add an extra set to *any* finished exercise, not just whichever one
   // happened to still be open when the last target was hit.
-  const onSetsChange = useCallback(
-    (exerciseId: string, sets: SetLog[]) => {
-      setExercises((prev) => {
-        const next = prev.map((e) => (e.id === exerciseId ? { ...e, sets } : e));
-        const changed = next.find((e) => e.id === exerciseId);
-        if (
-          openId === exerciseId &&
-          changed &&
-          changed.sets.length >= changed.target.target_sets
-        ) {
-          const nextIncomplete = next.find(
-            (e) => e.sets.length < e.target.target_sets
-          );
-          if (nextIncomplete) setOpenId(nextIncomplete.id);
-        }
-        return next;
-      });
-    },
-    [openId]
-  );
+  const onSetsChange = useCallback((exerciseId: string, sets: SetLog[]) => {
+    setExercises((prev) => {
+      const next = prev.map((e) => (e.id === exerciseId ? { ...e, sets } : e));
+      const changed = next.find((e) => e.id === exerciseId);
+      if (
+        openIdRef.current === exerciseId &&
+        changed &&
+        changed.sets.length >= changed.target.target_sets
+      ) {
+        const nextIncomplete = next.find(
+          (e) => e.sets.length < e.target.target_sets
+        );
+        if (nextIncomplete) setOpenId(nextIncomplete.id);
+      }
+      return next;
+    });
+  }, []);
 
   const onLogged = useCallback(() => {
     setRestEndsAt(Date.now() + settings.restSeconds * 1000);
   }, [settings.restSeconds]);
+
+  const handleOpenChange = useCallback((exerciseId: string, next: boolean) => {
+    setOpenId(next ? exerciseId : null);
+  }, []);
+
+  const handleReplaced = useCallback(
+    (id: string, patch: ReturnType<typeof libraryToExercisePatch>) => {
+      setExercises((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      );
+    },
+    []
+  );
 
   return (
     <div className="space-y-5">
@@ -237,32 +250,22 @@ export function WorkoutSession({
 
       <div className="space-y-3">
         {exercises.map((ex, i) => (
-          <div
+          <ExerciseCard
             key={ex.id}
-            className="animate-rise"
-            style={{ animationDelay: `${i * 40}ms` }}
-          >
-            <ExerciseCard
-              exercise={ex}
-              sessionId={sessionId}
-              weekFocus={weekFocus}
-              dayNumber={dayNumber}
-              routineId={routineId}
-              cycleId={cycleId}
-              performedOn={performedOn}
-              open={openId === ex.id}
-              onOpenChange={(next) => setOpenId(next ? ex.id : null)}
-              onSetsChange={onSetsChange}
-              onLogged={onLogged}
-              onReplaced={(id, patch) =>
-                setExercises((prev) =>
-                  prev.map((item) =>
-                    item.id === id ? { ...item, ...patch } : item
-                  )
-                )
-              }
-            />
-          </div>
+            exercise={ex}
+            sessionId={sessionId}
+            weekFocus={weekFocus}
+            dayNumber={dayNumber}
+            routineId={routineId}
+            cycleId={cycleId}
+            performedOn={performedOn}
+            open={openId === ex.id}
+            priority={i < 2}
+            onOpenChange={handleOpenChange}
+            onSetsChange={onSetsChange}
+            onLogged={onLogged}
+            onReplaced={handleReplaced}
+          />
         ))}
         {exercises.length === 0 && (
           <p className="rounded-2xl bg-[var(--card)] px-4 py-6 text-sm text-[var(--muted)] ring-1 ring-[var(--stroke)]">

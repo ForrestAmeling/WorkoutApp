@@ -1,4 +1,3 @@
-import { AppShell } from "@/components/AppShell";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
 import {
   loadExerciseProgress,
@@ -8,14 +7,13 @@ import {
 import { shiftISODate, todayISO } from "@/lib/program";
 import { requireBillingPage } from "@/lib/require-billing";
 import { ensureUserRoutines } from "@/lib/routines";
-import { billingNotice } from "@/lib/subscription-access";
 
 type Props = {
   searchParams: Promise<{ routine?: string }>;
 };
 
 export default async function ProgressPage({ searchParams }: Props) {
-  const { user, supabase, subscription } = await requireBillingPage();
+  const { user, supabase } = await requireBillingPage();
 
   const { active, routines } = await ensureUserRoutines(supabase, user.id);
 
@@ -42,9 +40,6 @@ export default async function ProgressPage({ searchParams }: Props) {
     aiQuery = aiQuery.eq("sessions.routine_id", scopeRoutineId);
   }
 
-  // Neither query depends on the other's result — run the (larger)
-  // exercise-progress read and the AI-accuracy read concurrently instead
-  // of waiting for one to finish before starting the other.
   const [exercises, { data: aiRows }] = await Promise.all([
     loadExerciseProgress(supabase, user.id, { routineId: scopeRoutineId }),
     aiQuery,
@@ -53,10 +48,7 @@ export default async function ProgressPage({ searchParams }: Props) {
   const weekStart = shiftISODate(todayISO(), -6);
 
   return (
-    <AppShell
-      billingNotice={billingNotice(subscription)}
-      trialEnd={subscription?.trial_end}
-    >
+    <>
       <header className="mb-4 animate-rise">
         <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight text-[var(--ink)]">
           Progress
@@ -73,6 +65,6 @@ export default async function ProgressPage({ searchParams }: Props) {
         aiAccuracy={aiAccuracy}
         weekStart={weekStart}
       />
-    </AppShell>
+    </>
   );
 }

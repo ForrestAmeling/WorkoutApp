@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
 import { HistorySetRow } from "@/components/HistorySetRow";
 import { requireBillingPage } from "@/lib/require-billing";
-import { billingNotice } from "@/lib/subscription-access";
 import { formatHumanDate, WEEK_LABELS } from "@/lib/program";
 import type { WeekFocus } from "@/lib/types";
 
@@ -13,22 +11,16 @@ type Props = {
 
 export default async function SessionDetailPage({ params }: Props) {
   const { id } = await params;
-  const { user, supabase, subscription } = await requireBillingPage();
+  const { user, supabase } = await requireBillingPage();
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("*")
+    .select("*, set_logs(*, exercises(name))")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (!session) notFound();
-
-  const { data: logs } = await supabase
-    .from("set_logs")
-    .select("*, exercises(name)")
-    .eq("session_id", id)
-    .order("created_at");
 
   type LogRow = {
     id: string;
@@ -38,11 +30,19 @@ export default async function SessionDetailPage({ params }: Props) {
     ai_suggested_weight: number | null;
     notes: string | null;
     skipped: boolean;
+    created_at?: string;
     exercises: { name: string } | null;
   };
 
+  const logs = ((session.set_logs ?? []) as LogRow[]).slice().sort((a, b) => {
+    const aTime = a.created_at ?? "";
+    const bTime = b.created_at ?? "";
+    if (aTime !== bTime) return aTime.localeCompare(bTime);
+    return a.set_number - b.set_number;
+  });
+
   const byExercise = new Map<string, LogRow[]>();
-  for (const row of (logs ?? []) as LogRow[]) {
+  for (const row of logs) {
     const name = row.exercises?.name ?? "Exercise";
     const list = byExercise.get(name) ?? [];
     list.push(row);
@@ -50,10 +50,7 @@ export default async function SessionDetailPage({ params }: Props) {
   }
 
   return (
-    <AppShell
-      billingNotice={billingNotice(subscription)}
-      trialEnd={subscription?.trial_end}
-    >
+    <>
       <Link
         href="/history"
         className="text-sm font-semibold text-[var(--muted)]"
@@ -92,6 +89,6 @@ export default async function SessionDetailPage({ params }: Props) {
           </p>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }

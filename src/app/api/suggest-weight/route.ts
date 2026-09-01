@@ -13,20 +13,21 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const user = await getVerifiedUser(supabase);
+  const [user, body] = await Promise.all([
+    getVerifiedUser(supabase),
+    request.json(),
+  ]);
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const denied = await billingApiError(user.id);
-  if (denied) return denied;
 
-  const body = await request.json();
   const exerciseId = body.exercise_id as string | undefined;
   const libraryId = (body.library_id as string | null | undefined) || null;
   const weekFocus = body.week_focus as WeekFocus | undefined;
   const repLow = Number(body.rep_low);
   const repHigh = Number(body.rep_high);
+  const preferRule = body.prefer_rule === true;
   const sessionSets = Array.isArray(body.session_sets)
     ? (body.session_sets as HistorySet[]).filter(
         (s) => s.weight != null && s.reps != null
@@ -43,11 +44,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { data: exercise } = await supabase
-    .from("exercises")
-    .select("name, library_id")
-    .eq("id", exerciseId)
-    .single();
+  const [denied, exerciseRes] = await Promise.all([
+    billingApiError(user.id),
+    supabase
+      .from("exercises")
+      .select("name, library_id")
+      .eq("id", exerciseId)
+      .single(),
+  ]);
+  if (denied) return denied;
+  const exercise = exerciseRes.data;
 
   const lib = libraryId ?? exercise?.library_id ?? null;
   let exerciseIds = [exerciseId];
@@ -166,7 +172,10 @@ export async function POST(request: Request) {
   const fallback = ruleBasedSuggestion(history, repLow, repHigh)!;
   const apiKey = process.env.DEEPSEEK_API_KEY;
 
-  if (!apiKey) {
+  // Opening an exercise auto-fills from the last logged weight. That path
+  // should not wait on DeepSeek (up to 8s) — the explicit "Suggest weight"
+  // button still uses the model.
+  if (preferRule || !apiKey) {
     return NextResponse.json(fallback);
   }
 

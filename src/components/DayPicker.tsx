@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { WEEK_FOCI, WEEK_LABELS } from "@/lib/program";
 import type { RoutineDay, WeekFocus } from "@/lib/types";
 
@@ -15,15 +16,14 @@ export function DayPicker({
   days: RoutineDay[];
   usesPeriodization: boolean;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
-  function update(nextWeek: WeekFocus, nextDay: number) {
+  function hrefFor(nextWeek: WeekFocus, nextDay: number) {
     const params = new URLSearchParams(searchParams.toString());
     if (usesPeriodization) params.set("week", nextWeek);
     else params.delete("week");
     params.set("day", String(nextDay));
-    router.push(`/today?${params.toString()}`);
+    return `/today?${params.toString()}`;
   }
 
   return (
@@ -31,35 +31,35 @@ export function DayPicker({
       {usesPeriodization && (
         <div className="flex gap-2">
           {WEEK_FOCI.map((w) => (
-            <button
+            <Link
               key={w}
-              type="button"
-              onClick={() => update(w, dayNumber)}
-              className={`min-h-11 flex-1 rounded-xl text-sm font-semibold transition ${
+              href={hrefFor(w, dayNumber)}
+              prefetch
+              className={`flex min-h-11 flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
                 w === weekFocus
                   ? "bg-[var(--solid)] text-[var(--on-solid)] shadow-sm"
                   : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
               }`}
             >
               {WEEK_LABELS[w]}
-            </button>
+            </Link>
           ))}
         </div>
       )}
       <div className="flex flex-wrap gap-2">
         {days.map((d) => (
-          <button
+          <Link
             key={d.id}
-            type="button"
-            onClick={() => update(weekFocus, d.day_number)}
-            className={`min-h-12 min-w-[3.25rem] flex-1 rounded-xl px-2 text-sm font-bold transition ${
+            href={hrefFor(weekFocus, d.day_number)}
+            prefetch
+            className={`flex min-h-12 min-w-[3.25rem] flex-1 items-center justify-center rounded-xl px-2 text-sm font-bold transition ${
               d.day_number === dayNumber
                 ? "bg-[var(--accent)] text-[var(--accent-ink)] shadow-sm"
                 : "bg-[var(--card)] text-[var(--muted)] ring-1 ring-[var(--stroke)]"
             }`}
           >
             {d.name}
-          </button>
+          </Link>
         ))}
       </div>
     </div>
