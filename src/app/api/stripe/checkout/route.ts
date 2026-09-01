@@ -74,7 +74,9 @@ export async function POST(request: Request) {
       managed_payments: managedPayments,
       client_reference_id: user.id,
       customer: existing?.stripe_customer_id ?? undefined,
-      customer_email: existing?.stripe_customer_id ? undefined : user.email,
+      customer_email: existing?.stripe_customer_id
+        ? undefined
+        : user.email ?? undefined,
       line_items: [{ price: getStripePriceId(), quantity: 1 }],
       success_url: `${origin}/settings?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/settings?checkout=canceled`,
