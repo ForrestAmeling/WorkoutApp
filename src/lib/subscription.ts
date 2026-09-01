@@ -181,6 +181,67 @@ export async function ensureTrialSubscription(user: AuthUser) {
   return (await syncStripeSubscription(subscription, user.id)) ?? null;
 }
 
+/**
+ * Recreates a Stripe customer (and, if the user is still within their
+ * trial window, a trial subscription) for a user whose stored
+ * stripe_customer_id no longer exists in the connected Stripe account.
+ * Preserves the original trial_end so re-provisioning doesn't grant or
+ * cost the user any trial time.
+ */
+export async function reprovisionStripeCustomer(user: AuthUser) {
+  const admin = createAdminClient();
+  const stripe = getStripe();
+
+  const { data: existing, error } = await admin
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  const row = existing as Subscription | null;
+
+  const customer = await stripe.customers.create(
+    { email: user.email ?? undefined, metadata: { supabase_user_id: user.id } },
+    { idempotencyKey: `reps-customer-${user.id}` }
+  );
+
+  const trialEnd = row?.trial_end
+    ? Math.floor(new Date(row.trial_end).getTime() / 1000)
+    : trialEndUnixFromSignup(user.created_at);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (trialEnd <= now + 60) {
+    const expired: Subscription = {
+      user_id: user.id,
+      stripe_customer_id: customer.id,
+      stripe_subscription_id: null,
+      status: "expired",
+      price_id: null,
+      current_period_end: null,
+      trial_end: row?.trial_end ?? new Date(trialEnd * 1000).toISOString(),
+      cancel_at_period_end: false,
+      updated_at: new Date().toISOString(),
+    };
+    await upsertSubscription(expired);
+    return expired;
+  }
+
+  const subscription = await stripe.subscriptions.create(
+    {
+      customer: customer.id,
+      items: [{ price: getStripePriceId() }],
+      trial_end: trialEnd,
+      trial_settings: {
+        end_behavior: { missing_payment_method: "cancel" },
+      },
+      metadata: { supabase_user_id: user.id },
+    },
+    { idempotencyKey: `reps-trial-${user.id}` }
+  );
+
+  return (await syncStripeSubscription(subscription, user.id)) ?? null;
+}
+
 export async function setCancelAtPeriodEnd(
   userId: string,
   cancelAtPeriodEnd: boolean

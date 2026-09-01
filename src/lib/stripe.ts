@@ -109,6 +109,21 @@ export function stripeErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+/**
+ * True when a Stripe call failed because the customer id we had on file
+ * doesn't exist in the currently-connected Stripe account (e.g. a stale
+ * id left over from before Stripe was fully wired up, or an account
+ * swap). Callers can use this to re-provision a fresh customer instead
+ * of surfacing a hard failure to the user.
+ */
+export function isMissingCustomerError(error: unknown): boolean {
+  return (
+    error instanceof Stripe.errors.StripeInvalidRequestError &&
+    error.code === "resource_missing" &&
+    error.param === "customer"
+  );
+}
+
 export function formatUsdFromCents(cents: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
