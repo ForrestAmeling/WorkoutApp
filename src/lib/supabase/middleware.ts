@@ -35,6 +35,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
     path.startsWith("/flyer") ||
+    path.startsWith("/api/cron/") ||
     path === "/api/stripe/webhook";
 
   if (!user && !isPublicRoute && path !== "/") {

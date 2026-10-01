@@ -30,14 +30,24 @@ export async function POST(request: Request) {
   }
 
   const stripe = getStripe();
+  const payload = await request.text();
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(
-      await request.text(),
-      signature,
-      secret
-    );
-  } catch {
+    event = stripe.webhooks.constructEvent(payload, signature, secret);
+  } catch (error) {
+    // livemode is read off the unverified payload for logging only. The usual
+    // cause of a rejection here is an endpoint in the other mode pointing at
+    // this URL, which is otherwise invisible from the logs.
+    let unverifiedLivemode: unknown;
+    try {
+      unverifiedLivemode = JSON.parse(payload)?.livemode;
+    } catch {
+      unverifiedLivemode = undefined;
+    }
+    console.error("Stripe webhook signature verification failed", {
+      reason: error instanceof Error ? error.message : String(error),
+      unverifiedLivemode,
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -91,6 +101,12 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Webhook failed";
+    console.error("Stripe webhook handling failed", {
+      id: event.id,
+      type: event.type,
+      livemode: event.livemode,
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
