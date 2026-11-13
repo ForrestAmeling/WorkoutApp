@@ -345,6 +345,7 @@ async function loadExercisesWithTargets(
     .eq("routine_id", routineId)
     .eq("day_number", dayNumber)
     .eq("is_template", false)
+    .eq("archived", false)
     .order("sort_order");
   if (error) throw error;
   return (data ?? []) as ExerciseWithTargets[];

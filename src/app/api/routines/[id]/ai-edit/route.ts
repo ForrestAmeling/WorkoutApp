@@ -1,6 +1,5 @@
 import {
   customExerciseNameIndex,
-  isCustomExerciseId,
   listVisibleCustomExercises,
 } from "@/lib/custom-exercises";
 import { findLibraryByName, loadExerciseLibrary } from "@/lib/exercise-library";
@@ -22,6 +21,7 @@ import {
   type EditorDay,
 } from "@/lib/routines";
 import type { RoutineDayInput, WeekFocus } from "@/lib/types";
+import { matchOriginalExercise, replacedSlotExercise } from "@/lib/routine-edit";
 import { NextResponse } from "next/server";
 
 type Props = { params: Promise<{ id: string }> };
@@ -213,42 +213,52 @@ Rules:
     const days: RoutineDayInput[] = [];
     const rawDays = (parsed.days ?? []).slice(0, 7);
 
+    // Match each exercise the AI sends back to the one it already was, so an
+    // edit like "alternate farmer's walk and curls" leaves every other
+    // exercise exactly as the user set it up. Same-day matches first for
+    // every day, then anywhere in the routine (moved between days).
+    const allOriginal = loaded.days.flatMap((d) => d.exercises);
+    const claimed = new Set<string>();
+    const dayNames = rawDays.map((d) =>
+      (d.exercises ?? []).map((ex) => (ex.name ?? "").trim())
+    );
+    const matches = dayNames.map((names, i) =>
+      names.map((name) =>
+        name
+          ? matchOriginalExercise(name, loaded.days[i]?.exercises ?? [], [], claimed)
+          : null
+      )
+    );
+    dayNames.forEach((names, i) =>
+      names.forEach((name, j) => {
+        if (name && !matches[i][j]) {
+          matches[i][j] = matchOriginalExercise(name, [], allOriginal, claimed);
+        }
+      })
+    );
+
     for (let i = 0; i < rawDays.length; i++) {
       const d = rawDays[i];
       const originalDay = loaded.days[i];
-      const exercises = [];
+      const exercises: RoutineDayInput["exercises"] = [];
 
       for (let j = 0; j < (d.exercises ?? []).length; j++) {
         const ex = d.exercises![j];
-        const name = (ex.name ?? "").trim();
+        const name = dayNames[i][j];
         if (!name) continue;
-        const originalEx = originalDay?.exercises[j];
-        // An unchanged slot that points at a custom exercise keeps its link
-        // even if that exercise was since renamed or unshared.
-        const keepOriginal =
-          originalEx &&
-          isCustomExerciseId(originalEx.library_id) &&
-          originalEx.name.trim().toLowerCase() === name.toLowerCase();
-        const lib = keepOriginal
-          ? {
-              id: originalEx.library_id!,
-              name: originalEx.name,
-              imageUrl: originalEx.image_url,
-              primaryMuscles: originalEx.muscle_group
-                ? [originalEx.muscle_group]
-                : [],
-            }
-          : (customByName.get(name.toLowerCase()) ??
-            (await findLibraryByName(name)));
+        const original = matches[i][j];
+        // Kept exercises keep their own targets; a new exercise that took a
+        // dropped one's slot inherits that slot's targets.
+        const targetSource =
+          original ?? replacedSlotExercise(originalDay?.exercises[j], dayNames[i]);
 
         const targets: NonNullable<
           RoutineDayInput["exercises"][number]["targets"]
         > = {};
 
         for (const focus of foci) {
-          if (!changeSetsReps && originalEx) {
-            // Equipment/exercise swaps: keep prior periodization targets by slot
-            const orig = originalEx.targets.find((t) => t.week_focus === focus);
+          if (!changeSetsReps && targetSource) {
+            const orig = targetSource.targets.find((t) => t.week_focus === focus);
             targets[focus] = orig
               ? {
                   target_sets: orig.target_sets,
@@ -290,6 +300,23 @@ Rules:
         }
 
         const primary = targets[foci[0]] ?? defaultTargetsForFocus(foci[0]);
+        if (original) {
+          exercises.push({
+            id: original.id,
+            name: original.name,
+            library_id: original.library_id,
+            image_url: original.image_url,
+            muscle_group: original.muscle_group,
+            is_accessory: original.is_accessory,
+            target_sets: primary.target_sets,
+            rep_low: primary.rep_low,
+            rep_high: primary.rep_high,
+            targets,
+          });
+          continue;
+        }
+        const lib =
+          customByName.get(name.toLowerCase()) ?? (await findLibraryByName(name));
         exercises.push({
           name: lib?.name ?? name,
           library_id: lib?.id ?? null,

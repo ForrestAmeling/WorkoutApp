@@ -42,6 +42,8 @@ export type Exercise = {
   library_id: string | null;
   image_url: string | null;
   is_template: boolean;
+  /** Removed from its routine but kept because it has logged sets (see exercise-removal.ts). */
+  archived: boolean;
 };
 
 export type ExerciseTarget = {
@@ -117,6 +119,8 @@ export type LibraryExercise = {
 };
 
 export type RoutineExerciseInput = {
+  /** Existing exercise row to keep (and update in place) instead of inserting a new one. */
+  id?: string;
   name: string;
   library_id?: string | null;
   image_url?: string | null;
