@@ -1,6 +1,7 @@
 import {
   customToLibraryExercise,
   normalizeCustomExerciseInput,
+  publishProblems,
   type CustomExercise,
 } from "@/lib/custom-exercises";
 import { billingApiError } from "@/lib/require-billing";
@@ -17,17 +18,27 @@ export async function POST(request: Request) {
   const denied = await billingApiError(user.id);
   if (denied) return denied;
 
-  const parsed = normalizeCustomExerciseInput(
-    await request.json().catch(() => null),
-    user.id
-  );
+  const body = await request.json().catch(() => null);
+  const parsed = normalizeCustomExerciseInput(body, user.id);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const submit = body?.submit_to_free_db === true;
+  const missing = submit ? publishProblems(parsed.value) : [];
+  if (missing.length) {
+    return NextResponse.json(
+      { error: `To submit to free-exercise-db, add ${missing.join(", ")}.` },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await supabase
     .from("custom_exercises")
-    .insert({ ...parsed.value, user_id: user.id })
+    .insert({
+      ...parsed.value,
+      user_id: user.id,
+      publish_status: submit ? "requested" : "none",
+    })
     .select("*")
     .single();
   if (error) {

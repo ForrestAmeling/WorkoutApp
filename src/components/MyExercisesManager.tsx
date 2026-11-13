@@ -4,7 +4,11 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
 import { CustomExerciseForm } from "@/components/CustomExerciseForm";
-import { exerciseImageUrl, type CustomExercise } from "@/lib/custom-exercises";
+import {
+  exerciseImageUrl,
+  publishStatusLabel,
+  type CustomExercise,
+} from "@/lib/custom-exercises";
 
 export function MyExercisesManager({
   initial,
@@ -90,6 +94,24 @@ export function MyExercisesManager({
             >
               {ex.visibility === "shared" ? "Shared" : "Private"}
             </span>
+            {publishStatusLabel(ex) ? (
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                {publishStatusLabel(ex)}
+                {ex.submission?.pr_url ? (
+                  <>
+                    {" · "}
+                    <a
+                      href={ex.submission.pr_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[var(--accent-text)]"
+                    >
+                      PR #{ex.submission.pr_number}
+                    </a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-col items-end gap-1">
             <button
@@ -119,7 +141,13 @@ export function MyExercisesManager({
           onClose={() => setEditing(undefined)}
           onSaved={({ exercise }) => {
             setExercises((prev) =>
-              [...prev.filter((e) => e.id !== exercise.id), exercise].sort((a, b) =>
+              [
+                ...prev.filter((e) => e.id !== exercise.id),
+                {
+                  ...exercise,
+                  submission: prev.find((e) => e.id === exercise.id)?.submission ?? null,
+                },
+              ].sort((a, b) =>
                 a.name.localeCompare(b.name)
               )
             );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MyExercisesManager } from "@/components/MyExercisesManager";
+import { isAppAdmin } from "@/lib/app-admin";
 import { listOwnCustomExercises } from "@/lib/custom-exercises";
 import { requireBillingPage } from "@/lib/require-billing";
 
@@ -10,7 +11,16 @@ export default async function MyExercisesPage({ searchParams }: Props) {
     searchParams,
     requireBillingPage(),
   ]);
-  const exercises = await listOwnCustomExercises(supabase, user.id);
+  const [exercises, admin] = await Promise.all([
+    listOwnCustomExercises(supabase, user.id),
+    isAppAdmin(supabase, user.id),
+  ]);
+  const { count: awaitingReview } = admin
+    ? await supabase
+        .from("custom_exercises")
+        .select("id", { count: "exact", head: true })
+        .eq("publish_status", "requested")
+    : { count: null };
 
   return (
     <>
@@ -26,6 +36,15 @@ export default async function MyExercisesPage({ searchParams }: Props) {
           one to let other Reps users add it too.
         </p>
       </header>
+      {admin ? (
+        <Link
+          href="/exercises/review"
+          className="mb-4 block rounded-2xl bg-[var(--card)] px-4 py-3 text-sm font-semibold text-[var(--accent-text)] ring-1 ring-[var(--stroke)]"
+        >
+          Review free-exercise-db submissions
+          {awaitingReview ? ` (${awaitingReview} waiting)` : ""} →
+        </Link>
+      ) : null}
       <MyExercisesManager initial={exercises} initialEditId={edit ?? null} />
     </>
   );

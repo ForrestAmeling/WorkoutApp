@@ -33,6 +33,22 @@ export const EXERCISE_CATEGORIES = [
 
 export type ExerciseVisibility = "private" | "shared";
 
+/**
+ * Publishing a shared exercise to free-exercise-db: the owner requests it,
+ * an app admin approves or declines, the daily cron sends approved ones
+ * upstream as one pull request, then tracks whether it was merged.
+ * Owners can only move none/rejected/closed → requested and back to none
+ * (enforced by a trigger in supabase/exercise-publishing.sql).
+ */
+export type PublishStatus =
+  | "none"
+  | "requested"
+  | "approved"
+  | "rejected"
+  | "submitted"
+  | "merged"
+  | "closed";
+
 export type CustomExercise = {
   id: string;
   user_id: string;
@@ -48,14 +64,65 @@ export type CustomExercise = {
   instructions: string[];
   /** Storage object paths ("<user_id>/<file>"), first one is the thumbnail. */
   images: string[];
+  publish_status: PublishStatus;
+  publish_consented_at: string | null;
+  publish_reviewed_at: string | null;
+  /** Why it was declined, shown to the owner. */
+  publish_note: string | null;
+  /** Its id in free-exercise-db once submitted. */
+  published_slug: string | null;
+  submission_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Joined by listOwnCustomExercises. */
+  submission?: { pr_number: number | null; pr_url: string | null } | null;
 };
 
-export type CustomExerciseInput = Omit<
+export type CustomExerciseInput = Pick<
   CustomExercise,
-  "id" | "user_id" | "created_at" | "updated_at"
+  | "name"
+  | "visibility"
+  | "equipment"
+  | "level"
+  | "force"
+  | "mechanic"
+  | "category"
+  | "primary_muscles"
+  | "secondary_muscles"
+  | "instructions"
+  | "images"
 >;
+
+/** What free-exercise-db's schema.json requires beyond what Reps does. */
+export function publishProblems(ex: CustomExerciseInput): string[] {
+  const missing: string[] = [];
+  if (ex.visibility !== "shared") missing.push("set it to Shared");
+  if (!ex.level) missing.push("a level");
+  if (!ex.category) missing.push("a category");
+  if (ex.primary_muscles.length === 0) missing.push("a primary muscle");
+  if (ex.instructions.length === 0) missing.push("steps");
+  return missing;
+}
+
+/** Owner-facing status line; null when there's nothing to say. */
+export function publishStatusLabel(ex: Pick<CustomExercise, "publish_status" | "publish_note">) {
+  switch (ex.publish_status) {
+    case "requested":
+      return "Waiting for review before it goes to free-exercise-db";
+    case "approved":
+      return "Approved — goes out with the next free-exercise-db batch";
+    case "rejected":
+      return ex.publish_note ? `Not submitted: ${ex.publish_note}` : "Not submitted after review";
+    case "submitted":
+      return "Submitted to free-exercise-db — waiting on their maintainer";
+    case "merged":
+      return "Accepted into free-exercise-db";
+    case "closed":
+      return "free-exercise-db didn't accept this one";
+    default:
+      return null;
+  }
+}
 
 export function isCustomExerciseId(id: string | null | undefined): id is string {
   return typeof id === "string" && id.startsWith(CUSTOM_EXERCISE_PREFIX);
@@ -238,7 +305,7 @@ export async function listOwnCustomExercises(
 ): Promise<CustomExercise[]> {
   const { data, error } = await supabase
     .from("custom_exercises")
-    .select("*")
+    .select("*, submission:exercise_submissions(pr_number, pr_url)")
     .eq("user_id", userId)
     .order("name");
   if (error) throw error;

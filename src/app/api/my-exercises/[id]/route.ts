@@ -5,7 +5,9 @@ import {
   exerciseImageUrl,
   getCustomExercise,
   normalizeCustomExerciseInput,
+  publishProblems,
   type CustomExercise,
+  type PublishStatus,
 } from "@/lib/custom-exercises";
 import { billingApiError } from "@/lib/require-billing";
 import { createClient } from "@/lib/supabase/server";
@@ -45,10 +47,8 @@ export async function PATCH(request: Request, { params }: Props) {
   if ("error" in auth) return auth.error;
   const { supabase, user } = auth;
 
-  const parsed = normalizeCustomExerciseInput(
-    await request.json().catch(() => null),
-    user.id
-  );
+  const body = await request.json().catch(() => null);
+  const parsed = normalizeCustomExerciseInput(body, user.id);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
@@ -57,9 +57,35 @@ export async function PATCH(request: Request, { params }: Props) {
     const existing = await loadOwned(supabase, user.id, id);
     if (existing instanceof NextResponse) return existing;
 
+    // Owners can only ask to publish or withdraw the ask; review states
+    // belong to the admin (and a trigger enforces it).
+    let publish_status: PublishStatus | undefined;
+    if (
+      body?.submit_to_free_db === true &&
+      ["none", "rejected", "closed"].includes(existing.publish_status)
+    ) {
+      const missing = publishProblems(parsed.value);
+      if (missing.length) {
+        return NextResponse.json(
+          { error: `To submit to free-exercise-db, add ${missing.join(", ")}.` },
+          { status: 400 }
+        );
+      }
+      publish_status = "requested";
+    } else if (
+      body?.submit_to_free_db === false &&
+      ["requested", "approved"].includes(existing.publish_status)
+    ) {
+      publish_status = "none";
+    }
+
     const { data, error } = await supabase
       .from("custom_exercises")
-      .update({ ...parsed.value, updated_at: new Date().toISOString() })
+      .update({
+        ...parsed.value,
+        ...(publish_status ? { publish_status } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id)
       .eq("user_id", user.id)
       .select("*")
