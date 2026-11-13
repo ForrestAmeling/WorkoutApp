@@ -19,6 +19,7 @@ import {
   weightStep,
 } from "@/lib/units";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
+import { isPrivateExerciseImage } from "@/lib/custom-exercises";
 import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 import { SET_SYNCED_EVENT, type SetSyncedDetail } from "@/lib/set-sync-events";
 import type { ExerciseWithTarget, LibraryExercise, SetLog, WeekFocus } from "@/lib/types";
@@ -508,6 +509,7 @@ export const ExerciseCard = memo(function ExerciseCard({
         >
           <Image
             src={safeExerciseImageUrl(exercise.image_url)}
+            unoptimized={isPrivateExerciseImage(exercise.image_url)}
             alt=""
             width={48}
             height={48}

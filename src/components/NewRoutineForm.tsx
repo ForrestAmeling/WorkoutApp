@@ -13,6 +13,7 @@ import {
 import type { LibraryExercise, RoutineDayInput, WeekFocus } from "@/lib/types";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
+import { isPrivateExerciseImage } from "@/lib/custom-exercises";
 import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 
 type Mode = "choose" | "manual" | "ai" | "review";
@@ -360,6 +361,7 @@ export function NewRoutineForm() {
               >
                 <Image
                   src={safeExerciseImageUrl(ex.image_url)}
+                  unoptimized={isPrivateExerciseImage(ex.image_url)}
                   alt=""
                   width={48}
                   height={48}

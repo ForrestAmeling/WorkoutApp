@@ -1,4 +1,11 @@
 import {
+  customIdFromLibraryId,
+  customToLibraryExercise,
+  filterCustomExercises,
+  getCustomExercise,
+  listVisibleCustomExercises,
+} from "@/lib/custom-exercises";
+import {
   getLibraryExercise,
   loadExerciseLibrary,
   searchExerciseLibrary,
@@ -30,7 +37,20 @@ export async function GET(request: Request) {
 
   try {
     if (id || name) {
-      const exercise = await getLibraryExercise({ id, name });
+      const customId = customIdFromLibraryId(id);
+      if (customId) {
+        const custom = await getCustomExercise(supabase, customId);
+        if (custom) {
+          return NextResponse.json({
+            exercise: customToLibraryExercise(custom, user.id),
+          });
+        }
+        // Deleted or no longer shared — fall back to a library name match.
+      }
+      const exercise = await getLibraryExercise({
+        id: customId ? undefined : id,
+        name,
+      });
       if (!exercise) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
@@ -46,13 +66,18 @@ export async function GET(request: Request) {
       });
     }
 
-    const results = await searchExerciseLibrary({
-      q,
-      muscle,
-      equipment,
-      limit: Number.isFinite(limit) ? limit : 40,
-    });
-    return NextResponse.json({ results });
+    const max = Number.isFinite(limit) ? limit : 40;
+    const [results, custom] = await Promise.all([
+      searchExerciseLibrary({ q, muscle, equipment, limit: max }),
+      // Your exercises and shared ones lead the list; a failure here
+      // shouldn't take the whole library search down with it.
+      listVisibleCustomExercises(supabase).catch(() => []),
+    ]);
+    const mine = filterCustomExercises(
+      custom.map((row) => customToLibraryExercise(row, user.id)),
+      { q, muscle, equipment }
+    );
+    return NextResponse.json({ results: [...mine, ...results].slice(0, max) });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Library load failed";
     return NextResponse.json({ error: message }, { status: 502 });

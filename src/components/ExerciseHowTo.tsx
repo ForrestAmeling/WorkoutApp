@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
+import Link from "next/link";
+import {
+  customIdFromLibraryId,
+  isPrivateExerciseImage,
+} from "@/lib/custom-exercises";
 import { customLibraryExercise, safeExerciseImageUrl } from "@/lib/exercise-library";
 import type { LibraryExercise } from "@/lib/types";
 
@@ -205,6 +210,7 @@ function ExerciseHowToSheet({
                           alt={`${guide.name} position ${i + 1}`}
                           fill
                           sizes="(max-width: 640px) 50vw, 300px"
+                          unoptimized={isPrivateExerciseImage(src)}
                           className="rounded-2xl bg-[var(--canvas)] object-cover ring-1 ring-[var(--stroke)]"
                         />
                       </div>
@@ -232,9 +238,23 @@ function ExerciseHowToSheet({
                 </p>
               )}
 
-              <p className="text-[11px] text-[var(--muted)]">
-                Form photos and steps from free-exercise-db.
-              </p>
+              {guide.source === "mine" ? (
+                <p className="text-[11px] text-[var(--muted)]">
+                  Your exercise.{" "}
+                  <Link
+                    href={`/exercises?edit=${customIdFromLibraryId(guide.id)}`}
+                    className="font-semibold text-[var(--accent-text)]"
+                  >
+                    Edit photos & steps
+                  </Link>
+                </p>
+              ) : (
+                <p className="text-[11px] text-[var(--muted)]">
+                  {guide.source === "shared"
+                    ? "Shared by a Reps user."
+                    : "Form photos and steps from free-exercise-db."}
+                </p>
+              )}
               {canSwitch ? (
                 <button
                   type="button"
@@ -305,6 +325,7 @@ function ExerciseHowToSheet({
                             width={48}
                             height={48}
                             sizes="48px"
+                            unoptimized={isPrivateExerciseImage(ex.imageUrl)}
                             className="h-12 w-12 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
                           />
                           <div className="min-w-0">

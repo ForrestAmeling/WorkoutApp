@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { removeExercises } from "./exercise-removal";
 import {
   defaultTargetsForFocus,
   fociForMode,
@@ -13,6 +14,7 @@ import type {
   Routine,
   RoutineDay,
   RoutineDayInput,
+  RoutineExerciseInput,
   RoutineSource,
   WeekFocus,
 } from "./types";
@@ -238,6 +240,26 @@ export async function cloneTemplateRoutine(
   return routine as Routine;
 }
 
+/** One exercise_targets row per week focus, from the input's per-focus
+ * targets, then its flat targets, then the focus defaults. */
+function targetRowsFor(
+  exerciseId: string,
+  ex: RoutineExerciseInput,
+  foci: WeekFocus[]
+) {
+  return foci.map((focus) => {
+    const custom = ex.targets?.[focus];
+    const defaults = defaultTargetsForFocus(focus);
+    return {
+      exercise_id: exerciseId,
+      week_focus: focus,
+      target_sets: custom?.target_sets ?? ex.target_sets ?? defaults.target_sets,
+      rep_low: custom?.rep_low ?? ex.rep_low ?? defaults.rep_low,
+      rep_high: custom?.rep_high ?? ex.rep_high ?? defaults.rep_high,
+    };
+  });
+}
+
 /**
  * Batch-insert a routine's days, then its exercises, then its
  * exercise_targets — one round trip per level instead of one row at a time
@@ -301,18 +323,7 @@ async function insertRoutineDays(
   if (exError) throw exError;
 
   const targetRows = plannedExercises.flatMap((p) =>
-    foci.map((focus) => {
-      const custom = p.ex.targets?.[focus];
-      const defaults = defaultTargetsForFocus(focus);
-      return {
-        exercise_id: p.id,
-        week_focus: focus,
-        target_sets:
-          custom?.target_sets ?? p.ex.target_sets ?? defaults.target_sets,
-        rep_low: custom?.rep_low ?? p.ex.rep_low ?? defaults.rep_low,
-        rep_high: custom?.rep_high ?? p.ex.rep_high ?? defaults.rep_high,
-      };
-    })
+    targetRowsFor(p.id, p.ex, foci)
   );
   if (targetRows.length === 0) return;
   const { error: tError } = await supabase
@@ -423,6 +434,7 @@ export async function loadRoutineEditor(
       .select("*, exercise_targets(*)")
       .eq("routine_id", routineId)
       .eq("is_template", false)
+      .eq("archived", false)
       .order("sort_order"),
   ]);
   if (!routine) return null;
@@ -511,7 +523,13 @@ export async function copyRoutine(
   });
 }
 
-/** Replace all days/exercises on an existing routine (keeps id + active flag). */
+/**
+ * Apply edited days/exercises to an existing routine in place (keeps id +
+ * active flag). Exercises that carry their existing `id` are updated where
+ * they are, so they keep their logged history; exercises the edit left out
+ * go through removeExercises (archived when they have history). Days are
+ * reused by position.
+ */
 export async function replaceRoutineContent(
   supabase: SupabaseClient,
   userId: string,
@@ -549,14 +567,111 @@ export async function replaceRoutineContent(
     .eq("user_id", userId);
   if (updError) throw updError;
 
-  // Cascades remove exercises/targets via routine_days → exercises
-  const { error: delError } = await supabase
-    .from("routine_days")
-    .delete()
-    .eq("routine_id", routineId);
-  if (delError) throw delError;
+  const current = await loadRoutineEditor(supabase, routineId);
+  if (!current) throw new Error("Routine not found");
+  const foci = fociForMode(mode);
 
-  await insertRoutineDays(supabase, routineId, opts.days, fociForMode(mode));
+  const currentIds = new Set(
+    current.days.flatMap((d) => d.exercises.map((e) => e.id))
+  );
+  const keptIds = new Set<string>();
+  const plannedDays = opts.days.map((day, i) => ({
+    id: current.days[i]?.id ?? randomUUID(),
+    existing: Boolean(current.days[i]),
+    day,
+    sortOrder: i + 1,
+  }));
+  const plannedExercises = plannedDays.flatMap((pd) =>
+    pd.day.exercises.map((ex, j) => {
+      const keep = ex.id && currentIds.has(ex.id) && !keptIds.has(ex.id);
+      if (keep) keptIds.add(ex.id!);
+      return {
+        id: keep ? ex.id! : randomUUID(),
+        dayId: pd.id,
+        dayNumber: pd.day.day_number,
+        sortOrder: j + 1,
+        ex,
+      };
+    })
+  );
+
+  // Exercises the edit dropped: deleted, or archived if they have history.
+  await removeExercises(
+    supabase,
+    [...currentIds].filter((id) => !keptIds.has(id))
+  );
+
+  // Reused days are renumbered in ascending order so the (routine_id,
+  // day_number) unique index never sees two days on one number mid-way.
+  for (const pd of plannedDays.filter((p) => p.existing)) {
+    const { error } = await supabase
+      .from("routine_days")
+      .update({
+        day_number: pd.day.day_number,
+        name: pd.day.name,
+        sort_order: pd.sortOrder,
+      })
+      .eq("id", pd.id);
+    if (error) throw error;
+  }
+  const addedDays = plannedDays.filter((p) => !p.existing);
+  if (addedDays.length) {
+    const { error } = await supabase.from("routine_days").insert(
+      addedDays.map((pd) => ({
+        id: pd.id,
+        routine_id: routineId,
+        day_number: pd.day.day_number,
+        name: pd.day.name,
+        sort_order: pd.sortOrder,
+      }))
+    );
+    if (error) throw error;
+  }
+
+  // Kept exercises update in place, new ones insert — one upsert.
+  if (plannedExercises.length) {
+    const { error: exError } = await supabase.from("exercises").upsert(
+      plannedExercises.map((p) => ({
+        id: p.id,
+        name: p.ex.name,
+        muscle_group: p.ex.muscle_group ?? null,
+        day_number: p.dayNumber,
+        is_accessory: p.ex.is_accessory ?? false,
+        sort_order: p.sortOrder,
+        routine_id: routineId,
+        routine_day_id: p.dayId,
+        library_id: p.ex.library_id ?? null,
+        image_url: p.ex.image_url ?? null,
+        is_template: false,
+      }))
+    );
+    if (exError) throw exError;
+  }
+
+  if (keptIds.size) {
+    const { error } = await supabase
+      .from("exercise_targets")
+      .delete()
+      .in("exercise_id", [...keptIds]);
+    if (error) throw error;
+  }
+  const targetRows = plannedExercises.flatMap((p) =>
+    targetRowsFor(p.id, p.ex, foci)
+  );
+  if (targetRows.length) {
+    const { error } = await supabase.from("exercise_targets").insert(targetRows);
+    if (error) throw error;
+  }
+
+  // Days past the new end — their exercises were moved or removed above.
+  const removedDayIds = current.days.slice(plannedDays.length).map((d) => d.id);
+  if (removedDayIds.length) {
+    const { error } = await supabase
+      .from("routine_days")
+      .delete()
+      .in("id", removedDayIds);
+    if (error) throw error;
+  }
 
   const loaded = await loadRoutineEditor(supabase, routineId);
   if (!loaded) throw new Error("Failed to reload routine");

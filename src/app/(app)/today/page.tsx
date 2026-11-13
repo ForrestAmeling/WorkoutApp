@@ -2,8 +2,8 @@ import { Suspense } from "react";
 import { PageLoading } from "@/components/PageLoading";
 import { WorkoutSession } from "@/components/WorkoutSession";
 import { requireBillingPage } from "@/lib/require-billing";
-import { modeLabel, showsWeekPicker } from "@/lib/periodization";
-import { isISODate, todayISO, WEEK_LABELS } from "@/lib/program";
+import { positionLabel, showsWeekPicker } from "@/lib/periodization";
+import { isISODate, todayISO } from "@/lib/program";
 import {
   loadTodayPageData,
   routineMode,
@@ -32,6 +32,7 @@ export default async function TodayPage({ searchParams }: Props) {
     cycle,
     session,
     performedOn,
+    lastPerformedOn,
     exercises,
   } = await loadTodayPageData(supabase, user.id, {
     explicitDate,
@@ -44,12 +45,7 @@ export default async function TodayPage({ searchParams }: Props) {
   const mode = routineMode(routine);
   const dayName =
     days.find((d) => d.day_number === dayNumber)?.name ?? `Day ${dayNumber}`;
-  const title =
-    mode === "full"
-      ? `${WEEK_LABELS[weekFocus]} · ${dayName}`
-      : mode === "none"
-        ? dayName
-        : `${modeLabel(mode)} · ${dayName}`;
+  const title = positionLabel(mode, weekFocus, dayName);
 
   return (
     <Suspense fallback={<PageLoading label="Loading workout…" />}>
@@ -65,6 +61,7 @@ export default async function TodayPage({ searchParams }: Props) {
         cycleId={cycle.id}
         routineId={routine.id}
         performedOn={performedOn}
+        lastPerformedOn={lastPerformedOn}
         initialExercises={exercises}
       />
     </Suspense>

@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { removeExercises } from "@/lib/exercise-removal";
 import { createClient } from "@/lib/supabase/client";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
+import { isPrivateExerciseImage } from "@/lib/custom-exercises";
 import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 import {
   defaultTargetsForFocus,
@@ -122,10 +124,18 @@ export function RoutineEditor({
     if (!confirm("Remove this day and its exercises?")) return;
     setBusy(true);
     const supabase = createClient();
-    const { error } = await supabase
-      .from("routine_days")
-      .delete()
-      .eq("id", dayId);
+    // Exercises with logged sets can't be cascade-deleted with the day —
+    // archive those first so History keeps them.
+    let error: { message: string } | null = null;
+    try {
+      await removeExercises(
+        supabase,
+        days.find((d) => d.id === dayId)?.exercises.map((e) => e.id) ?? []
+      );
+      ({ error } = await supabase.from("routine_days").delete().eq("id", dayId));
+    } catch (e) {
+      error = { message: e instanceof Error ? e.message : "Remove failed" };
+    }
     setBusy(false);
     if (error) {
       setMessage(error.message);
@@ -277,18 +287,16 @@ export function RoutineEditor({
   }
 
   async function removeExercise(exerciseId: string) {
-    if (!confirm("Remove this exercise?")) return;
+    if (!confirm("Remove this exercise? Anything you've logged for it stays in History.")) return;
     setBusy(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("exercises")
-      .delete()
-      .eq("id", exerciseId);
-    setBusy(false);
-    if (error) {
-      setMessage(error.message);
+    try {
+      await removeExercises(createClient(), [exerciseId]);
+    } catch (e) {
+      setBusy(false);
+      setMessage(e instanceof Error ? e.message : "Remove failed");
       return;
     }
+    setBusy(false);
     setDays((prev) =>
       prev.map((d) => ({
         ...d,
@@ -573,6 +581,7 @@ export function RoutineEditor({
                   <div className="flex gap-3">
                     <Image
                       src={safeExerciseImageUrl(ex.image_url)}
+                      unoptimized={isPrivateExerciseImage(ex.image_url)}
                       alt=""
                       width={56}
                       height={56}

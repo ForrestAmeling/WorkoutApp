@@ -102,12 +102,17 @@ async function fetchLastLoggedSession(
   userId: string,
   routineId: string
 ): Promise<LastLoggedSession | null> {
-  // Only advance from sessions that actually have logged sets
+  // Only advance from sessions that actually have logged sets, and only
+  // within the routine's open run — closing the run (Restart) is what sends
+  // the routine back to its first day without touching logged history.
   const { data, error } = await supabase
     .from("sessions")
-    .select("week_focus, day_number, performed_on, set_logs!inner(id)")
+    .select(
+      "week_focus, day_number, performed_on, set_logs!inner(id), routine_runs!inner()"
+    )
     .eq("user_id", userId)
     .eq("routine_id", routineId)
+    .is("routine_runs.closed_on", null)
     .order("performed_on", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)
@@ -116,7 +121,7 @@ async function fetchLastLoggedSession(
   return (data as LastLoggedSession) ?? null;
 }
 
-function defaultDayFromLast(
+export function defaultDayFromLast(
   last: LastLoggedSession | null,
   routine: Routine,
   maxDay: number
@@ -223,11 +228,14 @@ export async function findCycleSession(
   dayNumber: number
 ): Promise<Session | null> {
   if (!cycleId) return null;
+  // Cycles are per user, not per run — scope to the open run too so a
+  // restarted routine doesn't show the previous run's sets in its slots.
   const { data, error } = await supabase
     .from("sessions")
-    .select("*")
+    .select("*, routine_runs!inner()")
     .eq("user_id", userId)
     .eq("routine_id", routineId)
+    .is("routine_runs.closed_on", null)
     .eq("cycle_id", cycleId)
     .eq("week_focus", weekFocus)
     .eq("day_number", dayNumber)
@@ -337,6 +345,7 @@ async function loadExercisesWithTargets(
     .eq("routine_id", routineId)
     .eq("day_number", dayNumber)
     .eq("is_template", false)
+    .eq("archived", false)
     .order("sort_order");
   if (error) throw error;
   return (data ?? []) as ExerciseWithTargets[];
@@ -374,9 +383,10 @@ async function findCycleSessionWithLogs(
   if (!cycleId) return null;
   const { data, error } = await supabase
     .from("sessions")
-    .select("*, set_logs(*)")
+    .select("*, set_logs(*), routine_runs!inner()")
     .eq("user_id", userId)
     .eq("routine_id", routineId)
+    .is("routine_runs.closed_on", null)
     .eq("cycle_id", cycleId)
     .eq("week_focus", weekFocus)
     .eq("day_number", dayNumber)
@@ -438,6 +448,8 @@ export async function loadTodayPageData(
   cycle: Cycle;
   session: Session | null;
   performedOn: string;
+  /** Most recent workout in the routine's open run, if any. */
+  lastPerformedOn: string | null;
   exercises: ExerciseWithTarget[];
 }> {
   const [{ active: routine }, existingCycle] = await Promise.all([
@@ -510,6 +522,7 @@ export async function loadTodayPageData(
     cycle,
     session,
     performedOn,
+    lastPerformedOn: last?.performed_on ?? null,
     exercises: stitchExercises(
       exerciseRows,
       weekFocus,
@@ -542,4 +555,92 @@ export async function loadActiveWorkoutContext(
   const { active: routine } = await ensureUserRoutines(supabase, userId);
   const days = await getRoutineDays(supabase, routine.id);
   return { routine, days };
+}
+
+export type RunSummary = {
+  id: string;
+  startedOn: string;
+  closedOn: string | null;
+  workouts: number;
+  lastPerformedOn: string | null;
+  /** Week focus/day of the run's most recent workout. */
+  lastPosition: { weekFocus: WeekFocus; dayNumber: number } | null;
+};
+
+/**
+ * Every run of a routine (newest first) plus where the open run picks up
+ * next. `next` is what Today will open: the first focus/day when there's
+ * no open run or it has no workouts yet.
+ */
+export async function loadRoutineRuns(
+  supabase: SupabaseClient,
+  userId: string,
+  routine: Routine,
+  maxDay: number
+): Promise<{
+  open: RunSummary | null;
+  past: RunSummary[];
+  next: { weekFocus: WeekFocus; dayNumber: number };
+}> {
+  const [{ data, error }, last] = await Promise.all([
+    supabase
+      .from("routine_runs")
+      .select("id, started_on, closed_on, sessions(performed_on, week_focus, day_number)")
+      .eq("routine_id", routine.id)
+      .eq("user_id", userId)
+      .order("started_on", { ascending: false })
+      .order("created_at", { ascending: false }),
+    fetchLastLoggedSession(supabase, userId, routine.id),
+  ]);
+  if (error) throw error;
+
+  const runs = (
+    (data ?? []) as {
+      id: string;
+      started_on: string;
+      closed_on: string | null;
+      sessions: { performed_on: string; week_focus: WeekFocus; day_number: number }[];
+    }[]
+  ).map((run): RunSummary => {
+    const latest = [...(run.sessions ?? [])].sort((a, b) =>
+      b.performed_on.localeCompare(a.performed_on)
+    )[0];
+    return {
+      id: run.id,
+      startedOn: run.started_on,
+      closedOn: run.closed_on,
+      workouts: run.sessions?.length ?? 0,
+      lastPerformedOn: latest?.performed_on ?? null,
+      lastPosition: latest
+        ? { weekFocus: latest.week_focus, dayNumber: latest.day_number }
+        : null,
+    };
+  });
+
+  const { weekFocus, dayNumber } = defaultDayFromLast(last, routine, maxDay);
+  return {
+    open: runs.find((r) => !r.closedOn) ?? null,
+    past: runs.filter((r) => r.closedOn),
+    next: { weekFocus, dayNumber },
+  };
+}
+
+/**
+ * Close the routine's open run so it starts over from its first day.
+ * Logged sessions stay attached to the closed run, so History, Progress and
+ * weight suggestions keep using them. The next logged set opens a new run.
+ */
+export async function closeOpenRun(
+  supabase: SupabaseClient,
+  userId: string,
+  routineId: string,
+  closedOn = todayISO()
+): Promise<void> {
+  const { error } = await supabase
+    .from("routine_runs")
+    .update({ closed_on: closedOn })
+    .eq("routine_id", routineId)
+    .eq("user_id", userId)
+    .is("closed_on", null);
+  if (error) throw error;
 }

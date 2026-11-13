@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RoutineEditor } from "@/components/RoutineEditor";
+import { RoutineRunCard } from "@/components/RoutineRunCard";
 import { StartWorkoutButton } from "@/components/StartWorkoutButton";
 import { requireBillingPage } from "@/lib/require-billing";
 import { loadRoutineEditor } from "@/lib/routines";
+import { loadRoutineRuns, routineMode } from "@/lib/workout";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -13,6 +15,12 @@ export default async function RoutineDetailPage({ params }: Props) {
 
   const data = await loadRoutineEditor(supabase, id);
   if (!data || data.routine.user_id !== user.id) notFound();
+  const runs = await loadRoutineRuns(
+    supabase,
+    user.id,
+    data.routine,
+    data.days.length || 1
+  );
 
   return (
     <>
@@ -35,6 +43,16 @@ export default async function RoutineDetailPage({ params }: Props) {
         routineId={data.routine.id}
         isActive={data.routine.is_active}
       />
+      <div className="mt-4">
+        <RoutineRunCard
+          routineId={data.routine.id}
+          mode={routineMode(data.routine)}
+          days={data.days}
+          open={runs.open}
+          past={runs.past}
+          next={runs.next}
+        />
+      </div>
       <div className="mt-5">
         <RoutineEditor routine={data.routine} days={data.days} />
       </div>

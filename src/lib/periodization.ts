@@ -1,3 +1,4 @@
+import { WEEK_LABELS } from "./program";
 import type { WeekFocus } from "./types";
 
 export type PeriodizationMode =
@@ -169,4 +170,15 @@ export function modeLabel(mode: PeriodizationMode) {
   return (
     PERIODIZATION_OPTIONS.find((o) => o.mode === mode)?.label ?? "No week focus"
   );
+}
+
+/** "Middle · Day 3"-style label for a spot in a routine, matching Today's title. */
+export function positionLabel(
+  mode: PeriodizationMode,
+  weekFocus: WeekFocus,
+  dayName: string
+) {
+  if (mode === "full") return `${WEEK_LABELS[weekFocus]} · ${dayName}`;
+  if (mode === "none") return dayName;
+  return `${modeLabel(mode)} · ${dayName}`;
 }
