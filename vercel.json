@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/keep-alive",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/publish-exercises",
+      "schedule": "0 15 * * *"
     }
   ]
 }

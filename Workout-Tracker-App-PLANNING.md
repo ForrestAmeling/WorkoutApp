@@ -170,7 +170,7 @@ Enable RLS on `cycles`, `sessions`, `set_logs`, scoped to `user_id = auth.uid()`
 - [ ] Notifications/reminders for workout days (know the PWA push limits on iOS before committing to this)
 - [x] **My exercises** — save my own exercises (name, muscles, equipment, level, photos, step text, like free-exercise-db), pick them in any routine, AI "write for me" / "clean up" for the text. Private or shared with all Reps users. (`/exercises`, `supabase/custom-exercises.sql`)
 - [x] **Restart / close a routine** — close the current run and start again at Light · Day 1 without losing logged history; closed runs still feed weight suggestions and progress. (`supabase/routine-runs.sql`, run card on the routine page, welcome-back prompt on Today)
-- [ ] Publish shared exercises as a public free-exercise-db-style repo (needs per-exercise public-domain consent for photos/text)
+- [x] Submit shared exercises to free-exercise-db: opt-in with public-domain consent, admin review at `/exercises/review`, daily cron opens one PR when 10 are approved or 14 days have passed (`supabase/exercise-publishing.sql`; needs `GITHUB_PUBLISH_TOKEN` in Vercel)
 - [ ] Moderation for shared exercises (report / hide) once there are more users
 - [ ] Optional: suggest a lighter start when same-focus history is more than ~4 weeks old
 

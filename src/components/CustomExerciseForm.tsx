@@ -12,6 +12,9 @@ import {
   EXERCISE_MECHANICS,
   exerciseImageUrl,
   MAX_EXERCISE_IMAGES,
+  publishProblems,
+  publishStatusLabel,
+  splitInstructions,
   type CustomExercise,
   type ExerciseVisibility,
 } from "@/lib/custom-exercises";
@@ -152,6 +155,12 @@ export function CustomExerciseForm({
   const [aiBusy, setAiBusy] = useState<"write" | "cleanup" | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submit, setSubmit] = useState(
+    initial?.publish_status === "requested" || initial?.publish_status === "approved"
+  );
+  // Already sent upstream — the checkbox no longer applies.
+  const sent =
+    initial?.publish_status === "submitted" || initial?.publish_status === "merged";
   const [showMore, setShowMore] = useState(
     Boolean(initial?.secondary_muscles.length || initial?.force || initial?.mechanic || initial?.category)
   );
@@ -276,6 +285,7 @@ export function CustomExerciseForm({
             secondary_muscles: secondary,
             instructions: text,
             images,
+            submit_to_free_db: sent ? undefined : visibility === "shared" && submit,
           }),
         }
       );
@@ -288,6 +298,23 @@ export function CustomExerciseForm({
       setSaving(false);
     }
   }
+
+  const missingForPublish =
+    submit && !sent
+      ? publishProblems({
+          name,
+          visibility,
+          equipment: equipment || null,
+          level: level || null,
+          force: force || null,
+          mechanic: mechanic || null,
+          category: category || null,
+          primary_muscles: primary,
+          secondary_muscles: secondary,
+          instructions: splitInstructions(text),
+          images,
+        })
+      : [];
 
   const toggle = (list: string[], set: (v: string[]) => void, m: string) =>
     set(list.includes(m) ? list.filter((x) => x !== m) : [...list, m]);
@@ -351,6 +378,61 @@ export function CustomExerciseForm({
               </p>
             ) : null}
           </div>
+
+          {visibility === "shared" ? (
+            <div className="rounded-xl bg-[var(--input)] p-3 ring-1 ring-[var(--stroke)]">
+              {sent && initial ? (
+                <p className="text-sm text-[var(--ink)]">
+                  {publishStatusLabel(initial)}
+                  {initial.submission?.pr_url ? (
+                    <>
+                      {" · "}
+                      <a
+                        href={initial.submission.pr_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[var(--accent-text)]"
+                      >
+                        PR #{initial.submission.pr_number}
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              ) : (
+                <>
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={submit}
+                      onChange={(e) => {
+                        setSubmit(e.target.checked);
+                        if (e.target.checked) setShowMore(true);
+                      }}
+                      className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent)]"
+                    />
+                    <span className="text-sm text-[var(--ink)]">
+                      <span className="font-semibold">Also submit to free-exercise-db</span>
+                      , the free public exercise library Reps uses. After a review,
+                      the name, steps and photos are sent to its GitHub and become{" "}
+                      <span className="font-semibold">public domain</span> — anyone
+                      can use them, permanently. Your account isn&apos;t shown. Only
+                      include photos you took yourself.
+                    </span>
+                  </label>
+                  {missingForPublish.length ? (
+                    <p className="mt-2 text-xs font-semibold text-[var(--danger)]">
+                      Still needs {missingForPublish.join(", ")}.
+                    </p>
+                  ) : null}
+                  {initial && publishStatusLabel(initial) ? (
+                    <p className="mt-2 text-xs text-[var(--muted)]">
+                      {publishStatusLabel(initial)}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
 
           <div className="space-y-1">
             <span className={labelClass}>
@@ -489,7 +571,13 @@ export function CustomExerciseForm({
         <div className="border-t border-[var(--stroke)] px-4 py-3">
           <button
             type="button"
-            disabled={saving || uploading || aiBusy !== null || !name.trim()}
+            disabled={
+              saving ||
+              uploading ||
+              aiBusy !== null ||
+              !name.trim() ||
+              missingForPublish.length > 0
+            }
             onClick={() => void save()}
             className="min-h-12 w-full rounded-xl bg-[var(--accent)] text-base font-bold text-[var(--accent-ink)] disabled:opacity-60"
           >
