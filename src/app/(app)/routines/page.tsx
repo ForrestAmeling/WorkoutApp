@@ -19,12 +19,20 @@ export default async function RoutinesPage() {
             Name, customize, and switch programs
           </p>
         </div>
-        <Link
-          href="/routines/new"
-          className="min-h-11 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold leading-[2.75rem] text-[var(--accent-ink)]"
-        >
-          New
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/exercises"
+            className="min-h-11 rounded-xl bg-[var(--input)] px-4 text-sm font-bold leading-[2.75rem] text-[var(--ink)] ring-1 ring-[var(--stroke)]"
+          >
+            My exercises
+          </Link>
+          <Link
+            href="/routines/new"
+            className="min-h-11 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold leading-[2.75rem] text-[var(--accent-ink)]"
+          >
+            New
+          </Link>
+        </div>
       </header>
       <RoutineList routines={routines} />
     </>

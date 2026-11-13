@@ -1,3 +1,8 @@
+import {
+  customExerciseNameIndex,
+  isCustomExerciseId,
+  listVisibleCustomExercises,
+} from "@/lib/custom-exercises";
 import { findLibraryByName, loadExerciseLibrary } from "@/lib/exercise-library";
 import {
   defaultTargetsForFocus,
@@ -98,11 +103,20 @@ export async function POST(request: Request, { params }: Props) {
     })
     .join("\n\n");
 
-  const library = await loadExerciseLibrary();
-  const sampleNames = library
-    .filter((e) => (e.equipment ?? "").toLowerCase().includes("dumbbell"))
-    .slice(0, 30)
-    .map((e) => e.name);
+  const [library, customRows] = await Promise.all([
+    loadExerciseLibrary(),
+    listVisibleCustomExercises(supabase).catch(() => []),
+  ]);
+  // Your own (and shared) exercises win over a free-exercise-db name match.
+  const customByName = customExerciseNameIndex(customRows, user.id);
+  const sampleNames = [
+    // The user's own exercise names exactly, so the model can pick them.
+    ...[...customByName.values()].map((e) => e.name),
+    ...library
+      .filter((e) => (e.equipment ?? "").toLowerCase().includes("dumbbell"))
+      .slice(0, 30)
+      .map((e) => e.name),
+  ];
 
   const periodizationRules =
     mode === "full"
@@ -208,8 +222,24 @@ Rules:
         const ex = d.exercises![j];
         const name = (ex.name ?? "").trim();
         if (!name) continue;
-        const lib = await findLibraryByName(name);
         const originalEx = originalDay?.exercises[j];
+        // An unchanged slot that points at a custom exercise keeps its link
+        // even if that exercise was since renamed or unshared.
+        const keepOriginal =
+          originalEx &&
+          isCustomExerciseId(originalEx.library_id) &&
+          originalEx.name.trim().toLowerCase() === name.toLowerCase();
+        const lib = keepOriginal
+          ? {
+              id: originalEx.library_id!,
+              name: originalEx.name,
+              imageUrl: originalEx.image_url,
+              primaryMuscles: originalEx.muscle_group
+                ? [originalEx.muscle_group]
+                : [],
+            }
+          : (customByName.get(name.toLowerCase()) ??
+            (await findLibraryByName(name)));
 
         const targets: NonNullable<
           RoutineDayInput["exercises"][number]["targets"]

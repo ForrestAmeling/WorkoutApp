@@ -65,9 +65,19 @@ export type Session = {
   user_id: string;
   cycle_id: string | null;
   routine_id: string | null;
+  run_id: string | null;
   week_focus: WeekFocus;
   day_number: number;
   performed_on: string;
+  created_at: string;
+};
+
+export type RoutineRun = {
+  id: string;
+  user_id: string;
+  routine_id: string;
+  started_on: string;
+  closed_on: string | null;
   created_at: string;
 };
 
@@ -102,6 +112,8 @@ export type LibraryExercise = {
   category: string | null;
   images: string[];
   imageUrl: string | null;
+  /** Set for user-created exercises (id "user:<uuid>"): yours, or shared by another Reps user. */
+  source?: "mine" | "shared";
 };
 
 export type RoutineExerciseInput = {

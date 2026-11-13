@@ -1,3 +1,7 @@
+import {
+  customExerciseNameIndex,
+  listVisibleCustomExercises,
+} from "@/lib/custom-exercises";
 import { findLibraryByName, loadExerciseLibrary } from "@/lib/exercise-library";
 import {
   defaultTargetsForFocus,
@@ -116,15 +120,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const library = await loadExerciseLibrary();
-  const sampleNames = library
-    .filter((e) =>
-      ["barbell", "dumbbell", "cable", "machine", "body only"].includes(
-        (e.equipment ?? "").toLowerCase()
+  const [library, customRows] = await Promise.all([
+    loadExerciseLibrary(),
+    listVisibleCustomExercises(supabase).catch(() => []),
+  ]);
+  // Your own (and shared) exercises win over a free-exercise-db name match.
+  const customByName = customExerciseNameIndex(customRows, user.id);
+  const sampleNames = [
+    // The user's own exercise names exactly, so the model can pick them.
+    ...[...customByName.values()].map((e) => e.name),
+    ...library
+      .filter((e) =>
+        ["barbell", "dumbbell", "cable", "machine", "body only"].includes(
+          (e.equipment ?? "").toLowerCase()
+        )
       )
-    )
-    .slice(0, 80)
-    .map((e) => e.name);
+      .slice(0, 80)
+      .map((e) => e.name),
+  ];
 
   const splitHint =
     daysPerWeek <= 3
@@ -221,9 +234,11 @@ ${prompt}`;
         const name = (ex.name ?? "").trim();
         if (!name) continue;
         const lib =
+          customByName.get(name.toLowerCase()) ??
           (ex.library_id
             ? library.find((l) => l.id === ex.library_id)
-            : null) ?? (await findLibraryByName(name));
+            : null) ??
+          (await findLibraryByName(name));
 
         const primaryFocus = foci[0];
         const primaryDefaults = defaultTargetsForFocus(primaryFocus);

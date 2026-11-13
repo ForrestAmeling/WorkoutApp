@@ -6,6 +6,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
 import { ExercisePicker } from "@/components/ExercisePicker";
+import { isPrivateExerciseImage } from "@/lib/custom-exercises";
 import { libraryToExercisePatch, safeExerciseImageUrl } from "@/lib/exercise-library";
 import {
   defaultTargetsForFocus,
@@ -573,6 +574,7 @@ export function RoutineEditor({
                   <div className="flex gap-3">
                     <Image
                       src={safeExerciseImageUrl(ex.image_url)}
+                      unoptimized={isPrivateExerciseImage(ex.image_url)}
                       alt=""
                       width={56}
                       height={56}

@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { CustomExerciseForm } from "@/components/CustomExerciseForm";
 import { ExerciseHowToButton } from "@/components/ExerciseHowTo";
-import { customLibraryExercise, safeExerciseImageUrl } from "@/lib/exercise-library";
+import { isPrivateExerciseImage } from "@/lib/custom-exercises";
+import { safeExerciseImageUrl } from "@/lib/exercise-library";
 import type { LibraryExercise } from "@/lib/types";
 
 export function ExercisePicker({
@@ -21,6 +23,7 @@ export function ExercisePicker({
   const [results, setResults] = useState<LibraryExercise[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     void fetch("/api/exercise-library?meta=1")
@@ -85,7 +88,7 @@ export function ExercisePicker({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search free-exercise-db…"
+            placeholder="Search exercises…"
             className="min-h-12 w-full rounded-xl bg-[var(--input)] px-3 text-base ring-1 ring-[var(--stroke)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
           />
           <div className="flex gap-2">
@@ -117,17 +120,17 @@ export function ExercisePicker({
         </div>
 
         <ul className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
-          {q.trim() && (
-            <li className="rounded-2xl bg-[var(--card)] px-3 py-2 ring-1 ring-[var(--stroke)]">
-              <button
-                type="button"
-                onClick={() => onPick(customLibraryExercise(q.trim()))}
-                className="w-full text-left text-sm font-semibold text-[var(--accent-text)]"
-              >
-                + Add “{q.trim()}” as your own exercise
-              </button>
-            </li>
-          )}
+          <li className="rounded-2xl bg-[var(--card)] px-3 py-2 ring-1 ring-[var(--stroke)]">
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="w-full text-left text-sm font-semibold text-[var(--accent-text)]"
+            >
+              {q.trim()
+                ? `+ Create “${q.trim()}” as your own exercise`
+                : "+ Create your own exercise"}
+            </button>
+          </li>
           {loading && (
             <li className="px-2 py-4 text-sm text-[var(--muted)]">Searching…</li>
           )}
@@ -151,11 +154,17 @@ export function ExercisePicker({
                     width={56}
                     height={56}
                     sizes="56px"
+                    unoptimized={isPrivateExerciseImage(ex.imageUrl)}
                     className="h-14 w-14 shrink-0 rounded-xl object-cover bg-[var(--canvas)]"
                   />
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-[var(--ink)]">
                       {ex.name}
+                      {ex.source ? (
+                        <span className="ml-2 rounded-full bg-[var(--chip)] px-2 py-0.5 align-middle text-[10px] font-bold uppercase text-[var(--chip-ink)]">
+                          {ex.source === "mine" ? "Mine" : "Community"}
+                        </span>
+                      ) : null}
                     </p>
                     <p className="truncate text-xs text-[var(--muted)]">
                       {[ex.primaryMuscles[0], ex.equipment]
@@ -173,6 +182,16 @@ export function ExercisePicker({
             ))}
         </ul>
       </div>
+      {creating ? (
+        <CustomExerciseForm
+          defaultName={q.trim()}
+          onClose={() => setCreating(false)}
+          onSaved={({ library }) => {
+            setCreating(false);
+            onPick(library);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

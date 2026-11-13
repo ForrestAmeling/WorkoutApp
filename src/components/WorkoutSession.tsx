@@ -1,16 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useRouter } from "next/navigation";
 import { DateStrip } from "@/components/DateStrip";
 import { DayPicker } from "@/components/DayPicker";
 import { ExerciseCard } from "@/components/ExerciseCard";
 import { RestTimer } from "@/components/RestTimer";
+import { restartRoutine } from "@/components/RoutineRunCard";
 import { useSettings } from "@/components/SettingsProvider";
 import { formatWeight } from "@/lib/units";
-import { nextPosition, todayISO, WEEK_LABELS } from "@/lib/program";
+import {
+  formatHumanDate,
+  nextPosition,
+  parseISODate,
+  todayISO,
+  WEEK_LABELS,
+} from "@/lib/program";
 import { libraryToExercisePatch } from "@/lib/exercise-library";
-import type { PeriodizationMode } from "@/lib/periodization";
+import {
+  defaultWeekFocus,
+  positionLabel,
+  type PeriodizationMode,
+} from "@/lib/periodization";
 import type {
   ExerciseWithTarget,
   RoutineDay,
@@ -19,6 +36,22 @@ import type {
 } from "@/lib/types";
 
 type WakeLockSentinel = { release: () => Promise<void> };
+
+/** A routine left alone this long gets the "start over?" prompt on Today. */
+const WELCOME_BACK_DAYS = 21;
+
+function subscribeStorage(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+
+function readStorage(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 export function WorkoutSession({
   title,
@@ -32,6 +65,7 @@ export function WorkoutSession({
   cycleId,
   routineId,
   performedOn,
+  lastPerformedOn,
   initialExercises,
 }: {
   title: string;
@@ -45,6 +79,7 @@ export function WorkoutSession({
   cycleId: string | null;
   routineId: string;
   performedOn: string;
+  lastPerformedOn: string | null;
   initialExercises: ExerciseWithTarget[];
 }) {
   const router = useRouter();
@@ -58,6 +93,55 @@ export function WorkoutSession({
   openIdRef.current = openId;
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [dismissedComplete, setDismissedComplete] = useState(false);
+
+  // Coming back to a routine after a long break: offer to start it over
+  // instead of silently resuming mid-block. Only on today's not-yet-started
+  // workout, and remembered per (routine, last workout) once dismissed.
+  const daysAway = lastPerformedOn
+    ? Math.round(
+        (parseISODate(todayISO()).getTime() -
+          parseISODate(lastPerformedOn).getTime()) /
+          86_400_000
+      )
+    : 0;
+  const welcomeKey = `reps-welcome-back:${routineId}:${lastPerformedOn}`;
+  // Server snapshot "1" keeps the banner out of the SSR/hydration pass.
+  const storedDismissal = useSyncExternalStore(
+    subscribeStorage,
+    () => readStorage(welcomeKey),
+    () => "1"
+  );
+  const [dismissedNow, setDismissedNow] = useState(false);
+  const welcomeDismissed = dismissedNow || storedDismissal === "1";
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const showWelcomeBack =
+    !welcomeDismissed &&
+    daysAway >= WELCOME_BACK_DAYS &&
+    !sessionId &&
+    performedOn === todayISO();
+
+  function dismissWelcomeBack() {
+    setDismissedNow(true);
+    try {
+      window.localStorage.setItem(welcomeKey, "1");
+    } catch {
+      // Storage blocked — it just shows again next visit.
+    }
+  }
+
+  async function startOver() {
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      await restartRoutine(routineId, true);
+      router.push("/today");
+      router.refresh();
+    } catch (e) {
+      setRestartError(e instanceof Error ? e.message : "Restart failed");
+      setRestarting(false);
+    }
+  }
 
   useEffect(() => {
     setExercises(initialExercises);
@@ -190,6 +274,47 @@ export function WorkoutSession({
             : ""}
         </p>
       </header>
+
+      {showWelcomeBack && lastPerformedOn && (
+        <section className="rounded-2xl bg-[var(--accent-soft)] px-4 py-4 ring-1 ring-[var(--accent)]">
+          <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[var(--ink)]">
+            Welcome back
+          </h2>
+          <p className="mt-1 text-sm text-[var(--ink)]">
+            Your last {routineName} workout was{" "}
+            {formatHumanDate(lastPerformedOn, { month: "short", day: "numeric" })}{" "}
+            ({daysAway >= 14 ? `${Math.round(daysAway / 7)} weeks` : `${daysAway} days`}{" "}
+            ago). Pick up at {title}, or start the routine over? Your past
+            workouts are kept and still guide weight suggestions.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={restarting}
+              onClick={() => void startOver()}
+              className="min-h-11 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-ink)] disabled:opacity-60"
+            >
+              {restarting
+                ? "Restarting…"
+                : `Restart from ${positionLabel(
+                    periodizationMode,
+                    defaultWeekFocus(periodizationMode),
+                    days.find((d) => d.day_number === 1)?.name ?? "Day 1"
+                  )}`}
+            </button>
+            <button
+              type="button"
+              onClick={dismissWelcomeBack}
+              className="text-sm font-semibold text-[var(--accent-text)]"
+            >
+              Keep going
+            </button>
+          </div>
+          {restartError && (
+            <p className="mt-2 text-sm text-[var(--danger)]">{restartError}</p>
+          )}
+        </section>
+      )}
 
       <DateStrip performedOn={performedOn} />
 
