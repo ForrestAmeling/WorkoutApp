@@ -20,6 +20,11 @@ export default function LoginPage() {
       <div className="mt-4 w-full">
         <InstallPrompt />
       </div>
+      <footer className="mt-6 text-xs text-[var(--muted)]">
+        <a href="https://www.builtbyforrest.com" target="_blank" rel="noopener" className="hover:underline">
+          Built by Forrest
+        </a>
+      </footer>
     </main>
   );
 }
